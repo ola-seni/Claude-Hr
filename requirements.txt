@@ -1,0 +1,7 @@
+# requirements.txt
+pandas
+numpy
+requests
+pybaseball
+mlbstatsapi
+python-telegram-bot
