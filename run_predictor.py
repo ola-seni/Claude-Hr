@@ -3,7 +3,15 @@ import os
 import datetime
 import json
 import logging
-from mlb_hr_predictor import MLBHomeRunPredictor  # Import your main class
+
+# Import the class directly from the file
+from importlib.util import spec_from_file_location, module_from_spec
+
+# Load module with hyphenated filename
+spec = spec_from_file_location("mlb_hr_predictor", "./mlb-hr-predictor.py")
+mlb_hr_predictor = module_from_spec(spec)
+spec.loader.exec_module(mlb_hr_predictor)
+MLBHomeRunPredictor = mlb_hr_predictor.MLBHomeRunPredictor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
