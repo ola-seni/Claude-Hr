@@ -6,7 +6,7 @@ import time
 # Configure logging (or import your logging config)
 logger = logging.getLogger('MLB-HR-Predictor')
 
-def fetch_player_stats(player_names, generate_simulated_stats=True):
+def fetch_player_stats(player_names, generate_simulated_stats=False):
     """
     Fetch season and recent stats for all players using MLB Stats API.
     
@@ -14,7 +14,7 @@ def fetch_player_stats(player_names, generate_simulated_stats=True):
     -----------
     player_names : set
         Set of player names to fetch stats for
-    generate_simulated_stats : bool, default=True
+    generate_simulated_stats : bool, default=False
         Whether to generate simulated stats if real stats aren't available
         
     Returns:
@@ -25,6 +25,9 @@ def fetch_player_stats(player_names, generate_simulated_stats=True):
     # Initialize result dictionaries
     player_stats = {}
     recent_player_stats = {}
+    
+    # Skip messages for players without stats
+    skipped_players = []
     
     # Fetch stats for each player
     logger.info(f"Fetching stats for {len(player_names)} players using MLB Stats API")
@@ -38,30 +41,26 @@ def fetch_player_stats(player_names, generate_simulated_stats=True):
                 try:
                     player_search = statsapi.lookup_player(player_name)
                 except Exception as lookup_err:
-                    logger.warning(f"Error looking up player {player_name}: {lookup_err}")
-                    if generate_simulated_stats:
-                        generate_simulated_player_stats(player_name, player_stats, recent_player_stats)
-                    continue
+                    logger.info(f"Could not look up player {player_name}")
+                    skipped_players.append(player_name)
+                    continue  # Skip this player - no simulated data
                     
                 if not player_search or not isinstance(player_search, list) or len(player_search) == 0:
-                    logger.warning(f"Player not found in MLB API: {player_name}")
-                    if generate_simulated_stats:
-                        generate_simulated_player_stats(player_name, player_stats, recent_player_stats)
-                    continue
+                    logger.info(f"Player not found in MLB API: {player_name}")
+                    skipped_players.append(player_name)
+                    continue  # Skip this player - no simulated data
                     
                 # Check if player_search is formatted correctly
                 if not isinstance(player_search[0], dict):
-                    logger.warning(f"Invalid player search result for {player_name}: {type(player_search[0])}")
-                    if generate_simulated_stats:
-                        generate_simulated_player_stats(player_name, player_stats, recent_player_stats)
-                    continue
+                    logger.info(f"Invalid player search result for {player_name}")
+                    skipped_players.append(player_name)
+                    continue  # Skip this player - no simulated data
                 
                 player_id = player_search[0].get('id')
                 if not player_id:
-                    logger.warning(f"Could not get player ID for {player_name}")
-                    if generate_simulated_stats:
-                        generate_simulated_player_stats(player_name, player_stats, recent_player_stats)
-                    continue
+                    logger.info(f"Could not get player ID for {player_name}")
+                    skipped_players.append(player_name)
+                    continue  # Skip this player - no simulated data
                     
                 # Get handedness with safer access
                 bats = 'Unknown'
@@ -87,10 +86,9 @@ def fetch_player_stats(player_names, generate_simulated_stats=True):
                         season=2025  # Use 2025 season
                     )
                 except Exception as stats_err:
-                    logger.warning(f"Error getting stats for {player_name}: {stats_err}")
-                    if generate_simulated_stats:
-                        generate_simulated_player_stats(player_name, player_stats, recent_player_stats)
-                    continue
+                    logger.info(f"Error getting stats for {player_name}")
+                    skipped_players.append(player_name)
+                    continue  # Skip this player - no simulated data
                 
                 # Handle the direct stats structure from the API
                 all_stats = {}
@@ -106,16 +104,22 @@ def fetch_player_stats(player_names, generate_simulated_stats=True):
                         if isinstance(raw_stats[0], dict) and 'stats' in raw_stats[0]:
                             all_stats = raw_stats[0]['stats']
                 
-                # If no usable stats found, generate simulated data
+                # If no usable stats found, skip this player
                 if not all_stats:
-                    logger.warning(f"No usable stats found for {player_name}, generating simulated data")
-                    if generate_simulated_stats:
-                        generate_simulated_player_stats(player_name, player_stats, recent_player_stats)
-                    continue
+                    logger.info(f"No usable stats found for {player_name}")
+                    skipped_players.append(player_name)
+                    continue  # Skip this player - no simulated data
                 
                 # Extract or estimate key season stats
-                games = int(all_stats.get('gamesPlayed', 0)) if all_stats.get('gamesPlayed') else np.random.randint(25, 50)
-                hr = int(all_stats.get('homeRuns', 0)) if all_stats.get('homeRuns') else np.random.randint(0, 15)
+                games = int(all_stats.get('gamesPlayed', 0)) if all_stats.get('gamesPlayed') else 0
+                
+                # Skip players with insufficient games
+                if games < 4:
+                    logger.info(f"Insufficient games for {player_name} ({games} games)")
+                    skipped_players.append(player_name)
+                    continue  # Skip players with very few games
+                
+                hr = int(all_stats.get('homeRuns', 0)) if all_stats.get('homeRuns') else 0
                 ab = int(all_stats.get('atBats', 0)) if all_stats.get('atBats') else games * 3.5
                 pa = int(all_stats.get('plateAppearances', 0)) if all_stats.get('plateAppearances') else ab * 1.1
                 
@@ -155,12 +159,11 @@ def fetch_player_stats(player_names, generate_simulated_stats=True):
                 else:
                     ops = 0.720  # Default
                 
-                # If key stats are missing or zero, generate reasonable values
+                # If key stats are missing or zero, skip this player
                 if games == 0 or ab == 0 or pa == 0:
-                    logger.warning(f"Missing key stats for {player_name}, using reasonable estimates")
-                    games = np.random.randint(25, 50) if games == 0 else games
-                    ab = games * 3.5 if ab == 0 else ab
-                    pa = ab * 1.1 if pa == 0 else pa
+                    logger.info(f"Missing key stats for {player_name}")
+                    skipped_players.append(player_name)
+                    continue  # Skip this player - insufficient data
                 
                 # Calculate additional stats
                 hr_per_game = hr / games if games > 0 else 0
@@ -268,11 +271,19 @@ def fetch_player_stats(player_names, generate_simulated_stats=True):
                     
             except Exception as e:
                 logger.error(f"Error processing stats for {player_name}: {e}")
-                if generate_simulated_stats:
-                    generate_simulated_player_stats(player_name, player_stats, recent_player_stats)
+                skipped_players.append(player_name)
+                continue  # Skip this player - no simulated data
                 
     except Exception as e:
         logger.error(f"Error fetching player stats: {e}")
+    
+    # Log the players we skipped (only if there are any)
+    if skipped_players:
+        logger.info(f"Skipped {len(skipped_players)} players due to missing or insufficient data")
+        if len(skipped_players) <= 10:
+            logger.info(f"Skipped players: {', '.join(skipped_players)}")
+        else:
+            logger.info(f"First 10 skipped players: {', '.join(skipped_players[:10])}...")
     
     return player_stats, recent_player_stats
 
@@ -652,7 +663,8 @@ def generate_simulated_player_stats(player_name, player_stats_dict, recent_playe
         'streak_duration': 0,
         'batter_history': {},
         'xwOBA': (obp * 1.8 + slg) / 3,
-        'xISO': iso
+        'xISO': iso,
+        'is_simulated': True 
     }
     
     # Generate recent stats with some variance from season stats
@@ -698,7 +710,8 @@ def generate_simulated_player_stats(player_name, player_stats_dict, recent_playe
         'hot_cold_streak': streak_factor,
         'streak_duration': streak_duration,
         'xwOBA': (obp * 1.8 + slg) / 3 * recent_factor,
-        'xISO': iso * recent_factor
+        'xISO': iso * recent_factor,
+        'is_simulated': True 
     }
 
 def set_default_pitcher_stats(pitcher_name, pitcher_stats_dict, recent_pitcher_stats_dict):
@@ -777,3 +790,27 @@ def get_pitcher_names_from_probable_pitchers(probable_pitchers):
     # Remove any empty strings, None values, or "Unknown" or "TBD"
     pitcher_names = {name for name in pitcher_names if name and isinstance(name, str) and name not in ["Unknown", "TBD"]}
     return pitcher_names
+
+def show_handedness_data_stats():
+    """Log stats about available handedness data"""
+    bats_values = {}
+    throws_values = {}
+    
+    # Count handedness values in player stats
+    for player, stats in player_stats.items():
+        bats = stats.get('bats', 'Unknown')
+        if bats in bats_values:
+            bats_values[bats] += 1
+        else:
+            bats_values[bats] = 1
+    
+    # Count handedness values in pitcher stats        
+    for pitcher, stats in pitcher_stats.items():
+        throws = stats.get('throws', 'Unknown')
+        if throws in throws_values:
+            throws_values[throws] += 1
+        else:
+            throws_values[throws] = 1
+    
+    logger.info(f"Batter handedness distribution: {bats_values}")
+    logger.info(f"Pitcher handedness distribution: {throws_values}")

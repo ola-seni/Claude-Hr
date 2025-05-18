@@ -731,6 +731,19 @@ class MLBHomeRunPredictor:
                 # Skip if we don't have stats for this player
                 if batter not in self.player_stats:
                     continue
+                # NEW: Skip if we don't have real stats for this player
+                if batter not in self.player_stats:
+                    logger.info(f"Skipping {batter} - no real stats available")
+                    continue
+                # NEW: Skip if player has insufficient data
+                if self.player_stats[batter].get('games', 0) < 4:
+                    logger.info(f"Skipping {batter} - insufficient games played (<4)")
+                    continue
+                # Skip if simulated data
+                if self.player_stats[batter].get('is_simulated', False):
+                    logger.info(f"Skipping {batter} - using simulated data")
+                    continue
+
                     
                 # Calculate HR probability components
                 
@@ -853,6 +866,8 @@ class MLBHomeRunPredictor:
                     'weather_wind': self.weather_data.get(game_id, {}).get('wind_speed', 0),
                     'weather_factor': weather_factor,
                     'platoon_advantage': platoon_factor > 1,
+                    'bats': self.player_stats.get(batter, {}).get('bats', '?'),
+                    'throws': self.pitcher_stats.get(away_pitcher, {}).get('throws', '?'),
                     'recent_hr_rate': recent_hr_rate,
                     'season_hr_rate': season_hr_rate,
                     'barrel_pct': barrel_pct,
@@ -871,6 +886,7 @@ class MLBHomeRunPredictor:
                     'xwOBA': xwoba,
                     'hr_probability': final_hr_prob,
                     'game_id': game_id,
+                    'game_time': game['game_time'],
                     'is_home_team': True
                 })
                 
@@ -879,7 +895,19 @@ class MLBHomeRunPredictor:
                 # Skip if we don't have stats for this player
                 if batter not in self.player_stats:
                     continue
-                    
+                # NEW: Skip if we don't have real stats for this player
+                if batter not in self.player_stats:
+                    logger.info(f"Skipping {batter} - no real stats available")
+                    continue
+                # NEW: Skip if player has insufficient data
+                if self.player_stats[batter].get('games', 0) < 4:
+                    logger.info(f"Skipping {batter} - insufficient games played (<4)")
+                    continue
+                # Skip if simulated data
+                if self.player_stats[batter].get('is_simulated', False):
+                    logger.info(f"Skipping {batter} - using simulated data")
+                    continue
+                
                 # Calculate HR probability components
                 
                 # Recent HR rate
@@ -1001,6 +1029,8 @@ class MLBHomeRunPredictor:
                     'weather_wind': self.weather_data.get(game_id, {}).get('wind_speed', 0),
                     'weather_factor': weather_factor,
                     'platoon_advantage': platoon_factor > 1,
+                    'bats': self.player_stats.get(batter, {}).get('bats', '?'),
+                    'throws': self.pitcher_stats.get(home_pitcher, {}).get('throws', '?'),
                     'recent_hr_rate': recent_hr_rate,
                     'season_hr_rate': season_hr_rate,
                     'barrel_pct': barrel_pct,
@@ -1019,6 +1049,7 @@ class MLBHomeRunPredictor:
                     'xwOBA': xwoba,
                     'hr_probability': final_hr_prob,
                     'game_id': game_id,
+                    'game_time': game['game_time'],
                     'is_home_team': False
                 })
                 
@@ -1103,6 +1134,29 @@ class MLBHomeRunPredictor:
             # Step 4: Fetch player and pitcher stats
             self.fetch_player_stats()
             self.fetch_pitcher_stats()
+
+            # Add this diagnostic code directly
+            bats_values = {}
+            throws_values = {}
+            
+            # Count handedness values in player stats
+            for player, stats in self.player_stats.items():
+                bats = stats.get('bats', 'Unknown')
+                if bats in bats_values:
+                    bats_values[bats] += 1
+                else:
+                    bats_values[bats] = 1
+            
+            # Count handedness values in pitcher stats        
+            for pitcher, stats in self.pitcher_stats.items():
+                throws = stats.get('throws', 'Unknown')
+                if throws in throws_values:
+                    throws_values[throws] += 1
+                else:
+                    throws_values[throws] = 1
+            
+            logger.info(f"Batter handedness distribution: {bats_values}")
+            logger.info(f"Pitcher handedness distribution: {throws_values}")
             
             # Step 5: Predict HR probabilities
             predictions_df = self.predict_home_runs()
