@@ -45,14 +45,9 @@ def fetch_rotowire_expected_lineups(date_str=None):
             "DNT": "1",
             "Connection": "keep-alive",
             "Upgrade-Insecure-Requests": "1",
-            "Cache-Control": "max-age=0"
         }
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        
-        # For debugging - save the HTML to a file to inspect
-        with open("rotowire_debug.html", "w") as f:
-            f.write(response.text)
         
         # Parse HTML
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -62,9 +57,7 @@ def fetch_rotowire_expected_lineups(date_str=None):
         
         # Find all lineup containers
         lineup_containers = soup.find_all('div', class_='lineup is-mlb')
-        
         if not lineup_containers:
-            # Try alternative class name
             lineup_containers = soup.find_all('div', class_='lineup')
             
         logger.info(f"Found {len(lineup_containers)} lineup containers")
@@ -101,85 +94,59 @@ def fetch_rotowire_expected_lineups(date_str=None):
                 # Create game_id
                 game_id = f"{home_code}_{away_code}_{date_str}"
                 
-                # Find pitchers
+                # Find pitchers - use the player highlight divs
+                pitcher_divs = container.find_all('div', class_='lineup__player-highlight-name')
                 away_pitcher = "TBD"
                 home_pitcher = "TBD"
                 
-                # Try to find confirmed starters - check multiple structures
-                pitcher_divs = container.find_all('div', class_='lineup__player-highlight-name')
                 if len(pitcher_divs) >= 2:
-                    away_pitcher = pitcher_divs[0].text.strip()
-                    home_pitcher = pitcher_divs[1].text.strip()
-                else:
-                    # Try alternative structure
-                    pitcher_cards = container.find_all('div', class_='lineup__card')
-                    if len(pitcher_cards) >= 2:
-                        # Typically first card is away, second is home
-                        away_pitcher_elem = pitcher_cards[0].find('a', class_='lineup__player')
-                        home_pitcher_elem = pitcher_cards[1].find('a', class_='lineup__player')
-                        
-                        if away_pitcher_elem:
-                            away_pitcher = away_pitcher_elem.text.strip()
-                        if home_pitcher_elem:
-                            home_pitcher = home_pitcher_elem.text.strip()
+                    # Extract pitcher names and remove the handedness indicator
+                    away_pitcher_text = pitcher_divs[0].text.strip()
+                    home_pitcher_text = pitcher_divs[1].text.strip()
+                    
+                    # Clean up pitcher names (remove newlines and handedness)
+                    away_pitcher = away_pitcher_text.split('\n')[0].strip()
+                    home_pitcher = home_pitcher_text.split('\n')[0].strip()
                 
-                # Log pitchers
                 logger.info(f"Pitchers: {away_pitcher} (A) vs {home_pitcher} (H)")
+                
+                # Find lineup lists
+                away_list = container.find('ul', class_='lineup__list is-visit')
+                home_list = container.find('ul', class_='lineup__list is-home')
                 
                 # Initialize lineup arrays
                 away_lineup = []
                 home_lineup = []
                 
-                # Try multiple approaches to find lineups
-                
-                # Approach 1: Standard lineup lists
-                away_players_div = container.find('ul', class_='lineup__list is-visit')
-                home_players_div = container.find('ul', class_='lineup__list is-home')
-                
                 # Process away lineup
-                if away_players_div:
-                    for player_li in away_players_div.find_all('li'):
-                        player_name_div = player_li.find('div', class_='lineup__player-name')
-                        if player_name_div and player_name_div.find('a'):
-                            player_name = player_name_div.find('a').text.strip()
-                            away_lineup.append(player_name)
+                if away_list:
+                    away_items = away_list.find_all('li')
+                    # Skip first two items (pitcher & "Expected Lineup")
+                    for item in away_items[2:]:
+                        # Check if this is a player entry (contains position and name)
+                        item_text = item.text.strip()
+                        if '\n' in item_text:
+                            # Item format is typically "POSITION\nPLAYER_NAME\nHANDEDNESS"
+                            parts = item_text.split('\n')
+                            if len(parts) >= 2:
+                                # Extract player name (second part)
+                                player_name = parts[1].strip()
+                                away_lineup.append(player_name)
                 
                 # Process home lineup
-                if home_players_div:
-                    for player_li in home_players_div.find_all('li'):
-                        player_name_div = player_li.find('div', class_='lineup__player-name')
-                        if player_name_div and player_name_div.find('a'):
-                            player_name = player_name_div.find('a').text.strip()
-                            home_lineup.append(player_name)
-                
-                # Approach 2: Alternative structure - direct a elements
-                if not away_lineup:
-                    away_players = container.select('ul.lineup__list.is-visit a.lineup__player')
-                    for player in away_players:
-                        away_lineup.append(player.text.strip())
-                
-                if not home_lineup:
-                    home_players = container.select('ul.lineup__list.is-home a.lineup__player')
-                    for player in home_players:
-                        home_lineup.append(player.text.strip())
-                
-                # Approach 3: Try finding within lineup__position-players div
-                if not away_lineup or not home_lineup:
-                    position_players_div = container.find('div', class_='lineup__position-players')
-                    if position_players_div:
-                        # Try to find away lineup
-                        if not away_lineup:
-                            away_section = position_players_div.find('div', class_='lineup__team-players is-visit')
-                            if away_section:
-                                for player_link in away_section.find_all('a', class_='lineup__player'):
-                                    away_lineup.append(player_link.text.strip())
-                        
-                        # Try to find home lineup
-                        if not home_lineup:
-                            home_section = position_players_div.find('div', class_='lineup__team-players is-home')
-                            if home_section:
-                                for player_link in home_section.find_all('a', class_='lineup__player'):
-                                    home_lineup.append(player_link.text.strip())
+                if home_list:
+                    home_items = home_list.find_all('li')
+                    # Skip first two items (pitcher & "Expected Lineup")
+                    for item in home_items[2:]:
+                        # Check if this is a player entry (contains position and name)
+                        item_text = item.text.strip()
+                        if '\n' in item_text:
+                            # Item format is typically "POSITION\nPLAYER_NAME\nHANDEDNESS"
+                            parts = item_text.split('\n')
+                            if len(parts) >= 2:
+                                # Extract player name (second part)
+                                player_name = parts[1].strip()
+                                home_lineup.append(player_name)
                 
                 # Store lineups
                 lineups[game_id] = {
@@ -195,12 +162,6 @@ def fetch_rotowire_expected_lineups(date_str=None):
                 
             except Exception as e:
                 logger.error(f"Error parsing lineup container: {e}", exc_info=True)
-        
-        # If we didn't find any lineups but found the containers, save HTML for debugging
-        if not lineups and lineup_containers:
-            with open(f"rotowire_debug_{date_str}.html", "w") as f:
-                f.write(response.text)
-            logger.warning(f"Could not extract lineups from {len(lineup_containers)} containers, saved HTML for debugging")
         
         return lineups
         
@@ -349,7 +310,7 @@ if __name__ == "__main__":
     
     # Test the functionality - try for today, explicitly
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    print(f"Testing with today's date: {today}")
+    print(f"\nTesting with today's date: {today}")
     rotowire_lineups = fetch_rotowire_expected_lineups(today)
     
     if rotowire_lineups:
@@ -363,14 +324,13 @@ if __name__ == "__main__":
         
         print(f"Games with at least partial lineups: {games_with_lineups}")
         
-        # Print first game as example
-        if rotowire_lineups:
-            first_game = next(iter(rotowire_lineups))
-            print(f"\nExample Game: {first_game}")
-            print(f"Home Pitcher: {rotowire_lineups[first_game]['home_pitcher']}")
-            print(f"Away Pitcher: {rotowire_lineups[first_game]['away_pitcher']}")
-            print(f"Home Lineup ({len(rotowire_lineups[first_game]['home'])} players): {rotowire_lineups[first_game]['home']}")
-            print(f"Away Lineup ({len(rotowire_lineups[first_game]['away'])} players): {rotowire_lineups[first_game]['away']}")
+        # Print details of all games
+        for game_id, data in rotowire_lineups.items():
+            print(f"\nGame: {game_id}")
+            print(f"Home Pitcher: {data['home_pitcher']}")
+            print(f"Away Pitcher: {data['away_pitcher']}")
+            print(f"Home Lineup ({len(data['home'])} players): {data['home']}")
+            print(f"Away Lineup ({len(data['away'])} players): {data['away']}")
     else:
         print(f"Failed to fetch any lineups")
     
@@ -378,3 +338,14 @@ if __name__ == "__main__":
     print("\nTesting check_today_and_tomorrow()")
     best_lineups, date_used = check_today_and_tomorrow()
     print(f"Best date: {date_used}, Number of games: {len(best_lineups)}")
+    
+    # Print sample of the best lineups
+    if best_lineups:
+        sample_game = next(iter(best_lineups))
+        print(f"\nSample game from best lineups: {sample_game}")
+        print(f"Home team: {best_lineups[sample_game]['home_team']}")
+        print(f"Away team: {best_lineups[sample_game]['away_team']}")
+        print(f"Home pitcher: {best_lineups[sample_game]['home_pitcher']}")
+        print(f"Away pitcher: {best_lineups[sample_game]['away_pitcher']}")
+        print(f"Home lineup ({len(best_lineups[sample_game]['home'])} players): {best_lineups[sample_game]['home']}")
+        print(f"Away lineup ({len(best_lineups[sample_game]['away'])} players): {best_lineups[sample_game]['away']}")

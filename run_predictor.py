@@ -4,7 +4,7 @@ import json
 import logging
 import pandas as pd
 from mlb_hr_predictor import MLBHomeRunPredictor
-from rotowire_lineups import fetch_rotowire_expected_lineups, convert_rotowire_data_to_mlb_format
+from rotowire_lineups import fetch_rotowire_expected_lineups, convert_rotowire_data_to_mlb_format, check_today_and_tomorrow
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,29 +44,68 @@ def main():
         # Reset tracking for a new day
         tracked_games = {}
         
-        # Try to get expected lineups from Rotowire for tomorrow
-        tomorrow = (datetime.datetime.now() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-        rotowire_lineups = fetch_rotowire_expected_lineups(tomorrow)
+        # Try to get expected lineups from Rotowire for both today and tomorrow
+        # This selects whichever has better lineup data
+        rotowire_lineups, date_used = check_today_and_tomorrow()
         
         if rotowire_lineups:
-            logger.info(f"Successfully fetched {len(rotowire_lineups)} expected lineups from Rotowire")
+            logger.info(f"Successfully fetched {len(rotowire_lineups)} expected lineups from Rotowire for {date_used}")
             
-            # Convert to our format
-            lineups, probable_pitchers = convert_rotowire_data_to_mlb_format(rotowire_lineups, tomorrow)
+            # Check if any lineups actually have players
+            has_players = False
+            for game_id, data in rotowire_lineups.items():
+                if len(data.get('home', [])) > 0 or len(data.get('away', [])) > 0:
+                    has_players = True
+                    break
             
-            # Override the default lineup fetching
-            predictor.lineups = lineups
-            predictor.probable_pitchers = probable_pitchers
-            
-            # Force early run mode
-            predictor.early_run = True
-            
-            # Run predictor
-            predictor.run()
+            if has_players:
+                logger.info("Found games with player lineups in Rotowire data")
+                # Convert to our format
+                lineups, probable_pitchers = convert_rotowire_data_to_mlb_format(rotowire_lineups, date_used)
+                
+                # Override the default lineup fetching
+                predictor.lineups = lineups
+                predictor.probable_pitchers = probable_pitchers
+                
+                # If we're using Rotowire data for tomorrow, make sure predictor knows
+                if date_used != today:
+                    logger.info(f"Setting predictor date to {date_used} based on Rotowire data")
+                    predictor.today = date_used
+                
+                # Force early run mode
+                predictor.early_run = True
+                
+                # Run predictor with Rotowire data
+                predictor.run()
+            else:
+                logger.warning("Found games but no players in Rotowire lineups, using pitcher-only approach")
+                # First, get pitchers from Rotowire (they might have pitchers but no lineups)
+                pitchers_from_rotowire = {}
+                for game_id, data in rotowire_lineups.items():
+                    home_pitcher = data.get('home_pitcher', 'TBD')
+                    away_pitcher = data.get('away_pitcher', 'TBD')
+                    
+                    # Only use if not TBD
+                    if home_pitcher != 'TBD' or away_pitcher != 'TBD':
+                        pitchers_from_rotowire[game_id] = {
+                            'home': home_pitcher,
+                            'away': away_pitcher
+                        }
+                
+                # Run with standard approach to get probable pitchers
+                predictor.early_run = True
+                predictor.fetch_lineups_and_pitchers()
+                
+                # Update with any pitchers found in Rotowire
+                predictor.probable_pitchers.update(pitchers_from_rotowire)
+                
+                # Run predictor with hybrid approach
+                predictor.run()
         else:
-            logger.warning("Could not fetch Rotowire lineups, falling back to standard approach")
+            logger.warning("Could not fetch any games from Rotowire, falling back to standard approach")
             # Run with standard approach (probable pitchers only)
             predictor.early_run = True
+            predictor.fetch_lineups_and_pitchers()
             predictor.run()
     
     # For midday run, use standard approach with confirmed lineups
@@ -101,7 +140,30 @@ def main():
                 tracked_games["predicted"] = []
             tracked_games["predicted"].extend(games_with_new_lineups)
         else:
-            logger.info("No new confirmed lineups found, skipping prediction run")
+            logger.info("No new confirmed lineups found, checking for games with any lineup data")
+            
+            # If we have no confirmed lineups, try to predict any games that have partial lineup data
+            games_with_any_data = []
+            for game_id, lineup in predictor.lineups.items():
+                if (game_id not in tracked_games.get("predicted", []) and 
+                    (len(lineup.get("home", [])) > 0 or len(lineup.get("away", [])) > 0)):
+                    games_with_any_data.append(game_id)
+            
+            if games_with_any_data:
+                logger.info(f"Found {len(games_with_any_data)} games with at least partial lineup data")
+                
+                # Filter to only these games
+                predictor.filter_games(games_with_any_data)
+                
+                # Run predictor
+                predictor.run()
+                
+                # Update tracking
+                if "predicted" not in tracked_games:
+                    tracked_games["predicted"] = []
+                tracked_games["predicted"].extend(games_with_any_data)
+            else:
+                logger.info("No games with new lineup data found, skipping prediction run")
     
     # Save tracking data
     with open(tracking_file, "w") as f:

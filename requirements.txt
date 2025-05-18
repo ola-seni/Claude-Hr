@@ -6,3 +6,4 @@ pybaseball
 MLB-StatsAPI
 python-telegram-bot
 beautifulsoup4
+lxml
