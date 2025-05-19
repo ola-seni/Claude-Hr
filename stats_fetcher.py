@@ -2,63 +2,89 @@ import logging
 import statsapi
 import numpy as np
 import time
+from handedness_data import get_batter_handedness, get_pitcher_handedness
 
 # Configure logging (or import your logging config)
 logger = logging.getLogger('MLB-HR-Predictor')
 
+# Replace the existing extract functions with calls to our new functions
 def extract_batter_handedness(player_data):
-    """Extract player batting handedness with better error handling"""
-    if not isinstance(player_data, dict):
-        return 'Unknown'
+    """Extract player batting handedness from player data or CSV"""
+    try:
+        # If we have a player name, check the CSV first
+        if isinstance(player_data, dict) and 'fullName' in player_data:
+            player_name = player_data['fullName']
+            csv_handedness = get_batter_handedness(player_name)
+            
+            if csv_handedness != 'Unknown':
+                return csv_handedness
+            
+        # Fall back to original logic if CSV lookup fails
+        if not isinstance(player_data, dict):
+            return 'Unknown'
+            
+        # Try multiple paths to find handedness
+        if 'batSide' in player_data and isinstance(player_data['batSide'], dict) and 'code' in player_data['batSide']:
+            return player_data['batSide']['code']
+        elif 'bat_side' in player_data and isinstance(player_data['bat_side'], dict) and 'code' in player_data['bat_side']:
+            return player_data['bat_side']['code']
         
-    # Try multiple paths to find handedness
-    if 'batSide' in player_data and isinstance(player_data['batSide'], dict) and 'code' in player_data['batSide']:
-        return player_data['batSide']['code']
-    elif 'bat_side' in player_data and isinstance(player_data['bat_side'], dict) and 'code' in player_data['bat_side']:
-        return player_data['bat_side']['code']
-    
-    # Try alternate structure
-    bat_side = player_data.get('batSide', {})
-    if isinstance(bat_side, str):
-        if bat_side in ['R', 'L', 'S']:
-            return bat_side
-    
-    # If player name contains "(L)" or "(R)" pattern common in some data
-    if 'fullName' in player_data:
-        name = player_data['fullName']
-        if '(R)' in name:
-            return 'R'
-        elif '(L)' in name:
-            return 'L'
-        elif '(S)' in name:
-            return 'S'
+        # Try alternate structure
+        bat_side = player_data.get('batSide', {})
+        if isinstance(bat_side, str):
+            if bat_side in ['R', 'L', 'S']:
+                return bat_side
+        
+        # If player name contains "(L)" or "(R)" pattern common in some data
+        if 'fullName' in player_data:
+            name = player_data['fullName']
+            if '(R)' in name:
+                return 'R'
+            elif '(L)' in name:
+                return 'L'
+            elif '(S)' in name:
+                return 'S'
+    except Exception as e:
+        logger.error(f"Error in extract_batter_handedness: {e}")
             
     return 'Unknown'
 
 def extract_pitcher_handedness(pitcher_data):
-    """Extract pitcher throwing handedness with better error handling"""
-    if not isinstance(pitcher_data, dict):
-        return 'Unknown'
-        
-    # Try multiple paths to find handedness
-    if 'pitchHand' in pitcher_data and isinstance(pitcher_data['pitchHand'], dict) and 'code' in pitcher_data['pitchHand']:
-        return pitcher_data['pitchHand']['code']
-    elif 'pitch_hand' in pitcher_data and isinstance(pitcher_data['pitch_hand'], dict) and 'code' in pitcher_data['pitch_hand']:
-        return pitcher_data['pitch_hand']['code']
-    
-    # Try alternate structure
-    pitch_hand = pitcher_data.get('pitchHand', {})
-    if isinstance(pitch_hand, str):
-        if pitch_hand in ['R', 'L']:
-            return pitch_hand
+    """Extract pitcher throwing handedness from player data or CSV"""
+    try:
+        # If we have a player name, check the CSV first
+        if isinstance(pitcher_data, dict) and 'fullName' in pitcher_data:
+            pitcher_name = pitcher_data['fullName']
+            csv_handedness = get_pitcher_handedness(pitcher_name)
             
-    # If pitcher name contains "(LHP)" or "(RHP)" pattern common in some data
-    if 'fullName' in pitcher_data:
-        name = pitcher_data['fullName']
-        if 'RHP' in name or '(R)' in name:
-            return 'R'
-        elif 'LHP' in name or '(L)' in name:
-            return 'L'
+            if csv_handedness != 'Unknown':
+                return csv_handedness
+        
+        # Fall back to original logic if CSV lookup fails
+        if not isinstance(pitcher_data, dict):
+            return 'Unknown'
+            
+        # Try multiple paths to find handedness
+        if 'pitchHand' in pitcher_data and isinstance(pitcher_data['pitchHand'], dict) and 'code' in pitcher_data['pitchHand']:
+            return pitcher_data['pitchHand']['code']
+        elif 'pitch_hand' in pitcher_data and isinstance(pitcher_data['pitch_hand'], dict) and 'code' in pitcher_data['pitch_hand']:
+            return pitcher_data['pitch_hand']['code']
+        
+        # Try alternate structure
+        pitch_hand = pitcher_data.get('pitchHand', {})
+        if isinstance(pitch_hand, str):
+            if pitch_hand in ['R', 'L']:
+                return pitch_hand
+                
+        # If pitcher name contains "(LHP)" or "(RHP)" pattern common in some data
+        if 'fullName' in pitcher_data:
+            name = pitcher_data['fullName']
+            if 'RHP' in name or '(R)' in name:
+                return 'R'
+            elif 'LHP' in name or '(L)' in name:
+                return 'L'
+    except Exception as e:
+        logger.error(f"Error in extract_pitcher_handedness: {e}")
             
     return 'Unknown'
 

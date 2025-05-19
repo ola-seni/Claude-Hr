@@ -16,6 +16,15 @@ from pybaseball import statcast, playerid_lookup
 # Configure logging
 logger = logging.getLogger('Baseball-Savant')
 
+def safe_float(value, default=0.0):
+    """Convert a value to float, handling NAType and other invalid values"""
+    try:
+        if pd.isna(value):  # This handles pd.NA, None, np.nan, etc.
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
 class BaseballSavant:
     """Class for handling Baseball Savant data integration"""
     
@@ -203,28 +212,28 @@ class BaseballSavant:
                 
                 # Store batter metrics
                 batters[player_name] = {
-                    'avg_ev': float(avg_ev),
-                    'max_ev': float(max_ev),
-                    'avg_la': float(avg_la),
-                    'hard_hit_pct': float(hard_hit_pct),
-                    'hard_hit_distance': float(hard_hit_distance),
+                    'avg_ev': safe_float(avg_ev),
+                    'max_ev': safe_float(max_ev),
+                    'avg_la': safe_float(avg_la),
+                    'hard_hit_pct': safe_float(hard_hit_pct),
+                    'hard_hit_distance': safe_float(hard_hit_distance),
                     'spray_angle': {
-                        'pull_pct': float(pull_pct),
-                        'center_pct': float(center_pct),
-                        'oppo_pct': float(oppo_pct),
-                        'pull_slg': float(pull_slg),
-                        'center_slg': float(center_slg),
-                        'oppo_slg': float(oppo_slg)
+                        'pull_pct': safe_float(pull_pct),
+                        'center_pct': safe_float(center_pct),
+                        'oppo_pct': safe_float(oppo_pct),
+                        'pull_slg': safe_float(pull_slg),
+                        'center_slg': safe_float(center_slg),
+                        'oppo_slg': safe_float(oppo_slg)
                     },
                     'zone_contact': {
-                        'up_ev': float(up_ev),
-                        'middle_ev': float(middle_ev),
-                        'down_ev': float(down_ev),
-                        'up_barrel_pct': float(up_barrel),
-                        'middle_barrel_pct': float(middle_barrel),
-                        'down_barrel_pct': float(down_barrel),
-                        'in_barrel_pct': float(in_barrel),
-                        'out_barrel_pct': float(out_barrel)
+                        'up_ev': safe_float(up_ev),
+                        'middle_ev': safe_float(middle_ev),
+                        'down_ev': safe_float(down_ev),
+                        'up_barrel_pct': safe_float(up_barrel),
+                        'middle_barrel_pct': safe_float(middle_barrel),
+                        'down_barrel_pct': safe_float(down_barrel),
+                        'in_barrel_pct': safe_float(in_barrel),
+                        'out_barrel_pct': safe_float(out_barrel)
                     },
                     'batter_id': int(batter_id),
                     'stand': batter_stand,
@@ -297,15 +306,15 @@ class BaseballSavant:
                 pitchers[player_name] = {
                     'pitch_mix': pitch_mix,
                     'zone_profile': {
-                        'up_pct': float(up_pct),
-                        'middle_z_pct': float(middle_z_pct),
-                        'down_pct': float(down_pct),
-                        'inside_pct': float(inside_pct),
-                        'middle_x_pct': float(middle_x_pct),
-                        'outside_pct': float(outside_pct)
+                        'up_pct': safe_float(up_pct),
+                        'middle_z_pct': safe_float(middle_z_pct),
+                        'down_pct': safe_float(down_pct),
+                        'inside_pct': safe_float(inside_pct),
+                        'middle_x_pct': safe_float(middle_x_pct),
+                        'outside_pct': safe_float(outside_pct)
                     },
                     'primary_tendency': tendency[0],
-                    'tendency_strength': float(tendency[1]),
+                    'tendency_strength': safe_float(tendency[1]),
                     'pitcher_id': int(pitcher_id),
                     'sample_size': len(valid_zone)
                 }
@@ -671,11 +680,11 @@ class BaseballSavant:
                 results[ballpark] = {
                     'games': len(park_data['game_date'].unique()),
                     'batted_balls': len(batted_balls),
-                    'avg_ev': float(avg_ev),
-                    'avg_la': float(avg_la),
-                    'hard_hit_pct': float(hard_hit_pct),
+                    'avg_ev': safe_float(avg_ev),
+                    'avg_la': safe_float(avg_la),
+                    'hard_hit_pct': safe_float(hard_hit_pct),
                     'home_runs': len(hrs),
-                    'hr_pct': float(hr_pct),
+                    'hr_pct': safe_float(hr_pct),
                     'sample_size': len(batted_balls)
                 }
         
