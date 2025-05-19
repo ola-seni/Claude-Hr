@@ -7,19 +7,19 @@ from handedness_data import get_batter_handedness, get_pitcher_handedness
 # Configure logging (or import your logging config)
 logger = logging.getLogger('MLB-HR-Predictor')
 
-# Replace the existing extract functions with calls to our new functions
 def extract_batter_handedness(player_data):
-    """Extract player batting handedness from player data or CSV"""
+    """Extract player batting handedness - prioritize CSV data"""
     try:
-        # If we have a player name, check the CSV first
+        # Always try CSV first for any player with a name
         if isinstance(player_data, dict) and 'fullName' in player_data:
             player_name = player_data['fullName']
             csv_handedness = get_batter_handedness(player_name)
             
+            # If we got valid handedness from CSV, use it
             if csv_handedness != 'Unknown':
                 return csv_handedness
-            
-        # Fall back to original logic if CSV lookup fails
+                
+        # Only if CSV lookup fails, fall back to MLB API data
         if not isinstance(player_data, dict):
             return 'Unknown'
             
@@ -50,17 +50,18 @@ def extract_batter_handedness(player_data):
     return 'Unknown'
 
 def extract_pitcher_handedness(pitcher_data):
-    """Extract pitcher throwing handedness from player data or CSV"""
+    """Extract pitcher throwing handedness - prioritize CSV data"""
     try:
-        # If we have a player name, check the CSV first
+        # Always try CSV first for any pitcher with a name
         if isinstance(pitcher_data, dict) and 'fullName' in pitcher_data:
             pitcher_name = pitcher_data['fullName']
             csv_handedness = get_pitcher_handedness(pitcher_name)
             
+            # If we got valid handedness from CSV, use it
             if csv_handedness != 'Unknown':
                 return csv_handedness
-        
-        # Fall back to original logic if CSV lookup fails
+                
+        # Only if CSV lookup fails, fall back to MLB API data
         if not isinstance(pitcher_data, dict):
             return 'Unknown'
             

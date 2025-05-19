@@ -1,8 +1,10 @@
 import logging
 import statsapi
 import numpy as np
+import datetime
+from rotowire_lineups import fetch_rotowire_expected_lineups, convert_rotowire_data_to_mlb_format
 
-# Configure logging (or import your logging config)
+# Configure logging
 logger = logging.getLogger('MLB-HR-Predictor')
 
 def fetch_lineups_and_pitchers(games, early_run=False):
@@ -28,6 +30,18 @@ def fetch_lineups_and_pitchers(games, early_run=False):
     lineups = {}
     probable_pitchers = {}
     
+    # Also initialize results from Rotowire (used as fallback)
+    rotowire_data = None
+    
+    # Try to get Rotowire data first (will be used as fallback)
+    try:
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        rotowire_data = fetch_rotowire_expected_lineups(today_str)
+        logger.info(f"Fetched {len(rotowire_data)} games from Rotowire")
+    except Exception as e:
+        logger.warning(f"Failed to fetch Rotowire data: {e}")
+    
+    # Process each game
     for _, game in games.iterrows():
         try:
             game_id = game['game_id']
@@ -37,339 +51,165 @@ def fetch_lineups_and_pitchers(games, early_run=False):
             
             logger.info(f"Fetching lineups and pitchers for game: {away_team} @ {home_team} (MLB Game ID: {mlb_game_id})")
             
-            # For early run, use probable pitchers from MLB API
+            # Initialize default values
+            home_lineup = []
+            away_lineup = []
+            home_pitcher = "TBD"
+            away_pitcher = "TBD"
+            
+            # For early run, focus mainly on probable pitchers
             if early_run:
-                # Get probable pitchers
                 try:
-                    # Try the standard probable_pitchers endpoint
+                    # Get probable pitchers for early run
                     probable_pitchers_data = statsapi.game_probable_pitchers(mlb_game_id)
                     
-                    # Check if we got proper data
+                    # Extract pitcher names if data is valid
                     if isinstance(probable_pitchers_data, dict) and 'home' in probable_pitchers_data and 'away' in probable_pitchers_data:
-                        home_probable = probable_pitchers_data.get('home', {}).get('fullName', '')
-                        away_probable = probable_pitchers_data.get('away', {}).get('fullName', '')
+                        home_pitcher = probable_pitchers_data.get('home', {}).get('fullName', 'TBD')
+                        away_pitcher = probable_pitchers_data.get('away', {}).get('fullName', 'TBD')
                     else:
-                        # Alternative approach: check the game data itself
-                        game_data = statsapi.get('game', {'gamePk': mlb_game_id})
-                        if isinstance(game_data, dict):
-                            # Navigate the response to find pitcher info
-                            home_probable = ''
-                            away_probable = ''
-                            
-                            # Try different possible paths for pitcher info
+                        # Fall back to alternative sources
+                        try:
+                            # Try getting from game data
+                            game_data = statsapi.get('game', {'gamePk': mlb_game_id})
                             if 'gameData' in game_data and 'probablePitchers' in game_data['gameData']:
                                 pitchers_data = game_data['gameData']['probablePitchers']
                                 if 'home' in pitchers_data and 'fullName' in pitchers_data['home']:
-                                    home_probable = pitchers_data['home']['fullName']
+                                    home_pitcher = pitchers_data['home']['fullName']
                                 if 'away' in pitchers_data and 'fullName' in pitchers_data['away']:
-                                    away_probable = pitchers_data['away']['fullName']
+                                    away_pitcher = pitchers_data['away']['fullName']
+                        except Exception as e:
+                            logger.warning(f"Error getting pitchers from game data: {e}")
                             
-                            # Try another possible structure
-                            elif 'teams' in game_data:
-                                teams_data = game_data['teams']
-                                if 'home' in teams_data and 'probablePitcher' in teams_data['home']:
-                                    home_pitcher = teams_data['home']['probablePitcher']
-                                    if isinstance(home_pitcher, dict) and 'fullName' in home_pitcher:
-                                        home_probable = home_pitcher['fullName']
-                                
-                                if 'away' in teams_data and 'probablePitcher' in teams_data['away']:
-                                    away_pitcher = teams_data['away']['probablePitcher']
-                                    if isinstance(away_pitcher, dict) and 'fullName' in away_pitcher:
-                                        away_probable = away_pitcher['fullName']
-                        else:
-                            # Fall back to using schedule data
+                        # If still no pitchers, try schedule
+                        if home_pitcher == "TBD" or away_pitcher == "TBD":
                             try:
                                 schedule = statsapi.schedule(game_id=mlb_game_id)
                                 if schedule and len(schedule) > 0:
                                     game_info = schedule[0]
-                                    home_probable = game_info.get('home_probable_pitcher', '')
-                                    away_probable = game_info.get('away_probable_pitcher', '')
+                                    if home_pitcher == "TBD":
+                                        home_pitcher = game_info.get('home_probable_pitcher', 'TBD')
+                                    if away_pitcher == "TBD":
+                                        away_pitcher = game_info.get('away_probable_pitcher', 'TBD')
                             except Exception as e:
-                                logger.warning(f"Error getting schedule for pitcher info: {e}")
-                                home_probable = ""
-                                away_probable = ""
+                                logger.warning(f"Error getting pitchers from schedule: {e}")
                 except Exception as e:
                     logger.warning(f"Error getting probable pitchers: {e}")
-                    # Fall back to schedule info
-                    try:
-                        schedule = statsapi.schedule(game_id=mlb_game_id)
-                        if schedule and len(schedule) > 0:
-                            game_info = schedule[0]
-                            home_probable = game_info.get('home_probable_pitcher', '')
-                            away_probable = game_info.get('away_probable_pitcher', '')
-                        else:
-                            home_probable = ""
-                            away_probable = ""
-                    except Exception as e2:
-                        logger.warning(f"Error getting schedule for pitcher info: {e2}")
-                        home_probable = ""
-                        away_probable = ""
-                
-                # Clean up empty or None values
-                if not home_probable or home_probable is None:
-                    # Try to get team's rotation if probable not available
-                    try:
-                        home_team_id = statsapi.lookup_team(game['home_team_name'])[0]['id']
-                        home_roster = statsapi.get('team_roster', {'teamId': home_team_id})
-                        pitchers = [player['person']['fullName'] for player in home_roster.get('roster', []) 
-                                   if player.get('position', {}).get('code') == '1']  # Pitchers are code 1
-                        
-                        if pitchers:
-                            home_probable = pitchers[0]  # Use first pitcher in roster as fallback
-                        else:
-                            home_probable = "TBD"
-                    except:
-                        home_probable = "TBD"
-                        
-                if not away_probable or away_probable is None:
-                    # Try to get team's rotation if probable not available
-                    try:
-                        away_team_id = statsapi.lookup_team(game['away_team_name'])[0]['id']
-                        away_roster = statsapi.get('team_roster', {'teamId': away_team_id})
-                        pitchers = [player['person']['fullName'] for player in away_roster.get('roster', []) 
-                                   if player.get('position', {}).get('code') == '1']  # Pitchers are code 1
-                        
-                        if pitchers:
-                            away_probable = pitchers[0]  # Use first pitcher in roster as fallback
-                        else:
-                            away_probable = "TBD"
-                    except:
-                        away_probable = "TBD"
-                
-                logger.info(f"Probable pitchers for {game_id}: Home - {home_probable}, Away - {away_probable}")
-                
-                # Store probable pitchers
-                probable_pitchers[game_id] = {
-                    'home': home_probable,
-                    'away': away_probable
-                }
-                
-                # Get projected lineups based on recent games
-                # In early run, we'll use team rosters and project likely starters
-                try:
-                    # Get team rosters
-                    home_team_id = statsapi.lookup_team(game['home_team_name'])[0]['id']
-                    away_team_id = statsapi.lookup_team(game['away_team_name'])[0]['id']
                     
-                    home_roster = statsapi.get('team_roster', {'teamId': home_team_id})
-                    away_roster = statsapi.get('team_roster', {'teamId': away_team_id})
-                    
-                    # Extract players from roster response
-                    home_players = [player['person']['fullName'] for player in home_roster.get('roster', []) 
-                                  if player.get('position', {}).get('code') not in ['1', '10']]  # Exclude pitchers
-                    away_players = [player['person']['fullName'] for player in away_roster.get('roster', [])
-                                  if player.get('position', {}).get('code') not in ['1', '10']]  # Exclude pitchers
-                    
-                    # Take first 9 position players as projected lineup
-                    home_lineup = home_players[:9] if len(home_players) >= 9 else home_players
-                    away_lineup = away_players[:9] if len(away_players) >= 9 else away_players
-                    
-                    logger.info(f"Projected lineups for {game_id}: Home - {len(home_lineup)} players, Away - {len(away_lineup)} players")
-                except Exception as e:
-                    logger.warning(f"Error getting projected lineups: {e}")
-                    # Fallback if roster lookup fails
-                    home_lineup = []
-                    away_lineup = []
+                # Log the pitchers we found
+                logger.info(f"Probable pitchers for {game_id}: Home - {home_pitcher}, Away - {away_pitcher}")
                 
-                # Store projected lineups
-                lineups[game_id] = {
-                    'home': home_lineup,
-                    'away': away_lineup
-                }
-                
-            # For midday run, get confirmed lineups if available
+                # For early run, use Rotowire for projected lineups
+                if rotowire_data and game_id in rotowire_data:
+                    rotowire_game = rotowire_data[game_id]
+                    home_lineup = rotowire_game.get('home', [])
+                    away_lineup = rotowire_game.get('away', [])
+                    logger.info(f"Using Rotowire projected lineups for early run: Home - {len(home_lineup)} players, Away - {len(away_lineup)} players")
+                    
+                    # Update pitchers if Rotowire has them
+                    if home_pitcher == "TBD" and 'home_pitcher' in rotowire_game:
+                        home_pitcher = rotowire_game['home_pitcher']
+                    if away_pitcher == "TBD" and 'away_pitcher' in rotowire_game:
+                        away_pitcher = rotowire_game['away_pitcher']
+            
+            # For midday run, try to get confirmed lineups from MLB API
             else:
-                # Try to get actual lineup cards
                 try:
                     # Different approach: use game_data to get current lineups
                     game_data = statsapi.get('game', {'gamePk': mlb_game_id})
                     
-                    # Initialize default values
-                    home_lineup = []
-                    away_lineup = []
-                    home_pitcher = "TBD"
-                    away_pitcher = "TBD"
+                    # Extract pitchers from game data
+                    if 'gameData' in game_data and 'probablePitchers' in game_data['gameData']:
+                        pitcher_data = game_data['gameData']['probablePitchers']
+                        if 'home' in pitcher_data and 'fullName' in pitcher_data['home']:
+                            home_pitcher = pitcher_data['home']['fullName']
+                        if 'away' in pitcher_data and 'fullName' in pitcher_data['away']:
+                            away_pitcher = pitcher_data['away']['fullName']
                     
-                    # Extract lineups from game data if available
-                    if isinstance(game_data, dict):
-                        # Try to get lineups from different possible paths in the response
+                    # Extract lineups from game data - liveData section
+                    if 'liveData' in game_data and 'boxscore' in game_data['liveData']:
+                        boxscore = game_data['liveData']['boxscore']
                         
-                        # First try for pitchers - look in gameData section
-                        if 'gameData' in game_data and 'probablePitchers' in game_data['gameData']:
-                            pitcher_data = game_data['gameData']['probablePitchers']
-                            if 'home' in pitcher_data and 'fullName' in pitcher_data['home']:
-                                home_pitcher = pitcher_data['home']['fullName']
-                            if 'away' in pitcher_data and 'fullName' in pitcher_data['away']:
-                                away_pitcher = pitcher_data['away']['fullName']
-                        
-                        # If not found, try another path for pitchers in teams section
-                        elif 'teams' in game_data:
-                            if 'home' in game_data['teams'] and 'probablePitcher' in game_data['teams']['home']:
-                                home_pitcher_data = game_data['teams']['home']['probablePitcher']
-                                if isinstance(home_pitcher_data, dict) and 'fullName' in home_pitcher_data:
-                                    home_pitcher = home_pitcher_data['fullName']
-                            
-                            if 'away' in game_data['teams'] and 'probablePitcher' in game_data['teams']['away']:
-                                away_pitcher_data = game_data['teams']['away']['probablePitcher']
-                                if isinstance(away_pitcher_data, dict) and 'fullName' in away_pitcher_data:
-                                    away_pitcher = away_pitcher_data['fullName']
-                        
-                        # For lineups - try to find in liveData section
-                        if 'liveData' in game_data and 'boxscore' in game_data['liveData']:
-                            boxscore = game_data['liveData']['boxscore']
-                            
-                            # Try to get batting orders
-                            if 'teams' in boxscore:
-                                # Home team lineup
-                                if 'home' in boxscore['teams'] and 'battingOrder' in boxscore['teams']['home']:
-                                    batting_order = boxscore['teams']['home']['battingOrder']
-                                    home_players = boxscore['teams']['home'].get('players', {})
-                                    
-                                    for player_id in batting_order:
-                                        player_key = f"ID{player_id}"
-                                        if player_key in home_players:
-                                            player_name = home_players[player_key].get('person', {}).get('fullName')
-                                            if player_name:
-                                                home_lineup.append(player_name)
+                        # Try to get batting orders
+                        if 'teams' in boxscore:
+                            # Home team lineup
+                            if 'home' in boxscore['teams'] and 'battingOrder' in boxscore['teams']['home']:
+                                batting_order = boxscore['teams']['home']['battingOrder']
+                                home_players = boxscore['teams']['home'].get('players', {})
                                 
-                                # Away team lineup
-                                if 'away' in boxscore['teams'] and 'battingOrder' in boxscore['teams']['away']:
-                                    batting_order = boxscore['teams']['away']['battingOrder']
-                                    away_players = boxscore['teams']['away'].get('players', {})
-                                    
-                                    for player_id in batting_order:
-                                        player_key = f"ID{player_id}"
-                                        if player_key in away_players:
-                                            player_name = away_players[player_key].get('person', {}).get('fullName')
-                                            if player_name:
-                                                away_lineup.append(player_name)
-                    
-                    # Fall back to schedule data if needed
-                    if (not home_lineup or not away_lineup or 
-                        home_pitcher == "TBD" or away_pitcher == "TBD"):
-                        try:
-                            schedule = statsapi.schedule(game_id=mlb_game_id)
-                            if schedule and len(schedule) > 0:
-                                game_info = schedule[0]
+                                for player_id in batting_order:
+                                    player_key = f"ID{player_id}"
+                                    if player_key in home_players:
+                                        player_name = home_players[player_key].get('person', {}).get('fullName')
+                                        if player_name and player_name not in home_lineup:
+                                            home_lineup.append(player_name)
+                            
+                            # Away team lineup
+                            if 'away' in boxscore['teams'] and 'battingOrder' in boxscore['teams']['away']:
+                                batting_order = boxscore['teams']['away']['battingOrder']
+                                away_players = boxscore['teams']['away'].get('players', {})
                                 
-                                # Update pitchers if needed
-                                if home_pitcher == "TBD":
-                                    home_pitcher = game_info.get('home_probable_pitcher', 'TBD')
-                                if away_pitcher == "TBD":
-                                    away_pitcher = game_info.get('away_probable_pitcher', 'TBD')
-                        except Exception as e:
-                            logger.warning(f"Error getting schedule info: {e}")
+                                for player_id in batting_order:
+                                    player_key = f"ID{player_id}"
+                                    if player_key in away_players:
+                                        player_name = away_players[player_key].get('person', {}).get('fullName')
+                                        if player_name and player_name not in away_lineup:
+                                            away_lineup.append(player_name)
                     
-                    # If still no lineup, fall back to team rosters
-                    if not home_lineup or not away_lineup:
-                        try:
-                            # Get team rosters
-                            home_team_id = statsapi.lookup_team(game['home_team_name'])[0]['id']
-                            away_team_id = statsapi.lookup_team(game['away_team_name'])[0]['id']
-                            
-                            if not home_lineup:
-                                home_roster = statsapi.get('team_roster', {'teamId': home_team_id})
-                                home_players = [player['person']['fullName'] for player in home_roster.get('roster', []) 
-                                            if player.get('position', {}).get('code') not in ['1', '10']]  # Exclude pitchers
-                                home_lineup = home_players[:9] if len(home_players) >= 9 else home_players
-                            
-                            if not away_lineup:
-                                away_roster = statsapi.get('team_roster', {'teamId': away_team_id})
-                                away_players = [player['person']['fullName'] for player in away_roster.get('roster', [])
-                                            if player.get('position', {}).get('code') not in ['1', '10']]  # Exclude pitchers
-                                away_lineup = away_players[:9] if len(away_players) >= 9 else away_players
-                        except Exception as e:
-                            logger.warning(f"Error getting roster data: {e}")
-                    
-                    logger.info(f"Confirmed lineups for {game_id}: Home - {len(home_lineup)} players, Away - {len(away_lineup)} players")
-                    logger.info(f"Confirmed pitchers for {game_id}: Home - {home_pitcher}, Away - {away_pitcher}")
-                    
-                    # Store confirmed lineups
-                    lineups[game_id] = {
-                        'home': home_lineup,
-                        'away': away_lineup
-                    }
-                    
-                    # Store confirmed pitchers
-                    probable_pitchers[game_id] = {
-                        'home': home_pitcher,
-                        'away': away_pitcher
-                    }
-                    
-                except Exception as e:
-                    logger.warning(f"Error getting confirmed lineups for {game_id}: {e}")
-                    
-                    # Fall back to early run method if lineup cards not available
-                    logger.warning(f"Lineup cards not available for {game_id}, using projected lineups")
-                    
-                    # Use the same code as early run for fallback
-                    try:
-                        # Get probable pitchers as fallback
-                        try:
-                            probable_pitchers_data = statsapi.game_probable_pitchers(mlb_game_id)
-                            if isinstance(probable_pitchers_data, dict) and 'home' in probable_pitchers_data and 'away' in probable_pitchers_data:
-                                home_probable = probable_pitchers_data.get('home', {}).get('fullName', 'TBD')
-                                away_probable = probable_pitchers_data.get('away', {}).get('fullName', 'TBD')
-                            else:
-                                # Try schedule data
-                                schedule = statsapi.schedule(game_id=mlb_game_id)
-                                if schedule and len(schedule) > 0:
-                                    game_info = schedule[0]
-                                    home_probable = game_info.get('home_probable_pitcher', 'TBD')
-                                    away_probable = game_info.get('away_probable_pitcher', 'TBD')
-                                else:
-                                    home_probable = "TBD"
-                                    away_probable = "TBD"
-                        except:
-                            # Try schedule data
-                            try:
-                                schedule = statsapi.schedule(game_id=mlb_game_id)
-                                if schedule and len(schedule) > 0:
-                                    game_info = schedule[0]
-                                    home_probable = game_info.get('home_probable_pitcher', 'TBD')
-                                    away_probable = game_info.get('away_probable_pitcher', 'TBD')
-                                else:
-                                    home_probable = "TBD"
-                                    away_probable = "TBD"
-                            except:
-                                home_probable = "TBD"
-                                away_probable = "TBD"
-                        
-                        # Get team rosters for projected lineups
-                        home_team_id = statsapi.lookup_team(game['home_team_name'])[0]['id']
-                        away_team_id = statsapi.lookup_team(game['away_team_name'])[0]['id']
-                        
-                        home_roster = statsapi.get('team_roster', {'teamId': home_team_id})
-                        away_roster = statsapi.get('team_roster', {'teamId': away_team_id})
-                        
-                        home_players = [player['person']['fullName'] for player in home_roster.get('roster', []) 
-                                       if player.get('position', {}).get('code') not in ['1', '10']]
-                        away_players = [player['person']['fullName'] for player in away_roster.get('roster', [])
-                                       if player.get('position', {}).get('code') not in ['1', '10']]
-                        
-                        home_lineup = home_players[:9] if len(home_players) >= 9 else home_players
-                        away_lineup = away_players[:9] if len(away_players) >= 9 else away_players
-                        
-                        lineups[game_id] = {
-                            'home': home_lineup,
-                            'away': away_lineup
-                        }
-                        
-                        probable_pitchers[game_id] = {
-                            'home': home_probable,
-                            'away': away_probable
-                        }
-                        
-                    except Exception as e2:
-                        logger.error(f"Error creating fallback lineups for {game_id}: {e2}")
-                        # Set empty defaults
-                        lineups[game_id] = {'home': [], 'away': []}
-                        probable_pitchers[game_id] = {'home': 'TBD', 'away': 'TBD'}
+                    # If we got lineups, log the success
+                    if home_lineup or away_lineup:
+                        logger.info(f"Successfully retrieved MLB lineups for {game_id}: Home - {len(home_lineup)} players, Away - {len(away_lineup)} players")
                 
+                except Exception as e:
+                    logger.warning(f"Error getting confirmed lineups from MLB API: {e}")
+                
+                # If MLB API didn't give us lineups, try Rotowire
+                if not home_lineup or not away_lineup:
+                    if rotowire_data and game_id in rotowire_data:
+                        rotowire_game = rotowire_data[game_id]
+                        
+                        if not home_lineup and 'home' in rotowire_game:
+                            home_lineup = rotowire_game['home']
+                            logger.info(f"Using Rotowire lineup for home team: {len(home_lineup)} players")
+                            
+                        if not away_lineup and 'away' in rotowire_game:
+                            away_lineup = rotowire_game['away']
+                            logger.info(f"Using Rotowire lineup for away team: {len(away_lineup)} players")
+                            
+                        # Update pitchers if needed
+                        if home_pitcher == "TBD" and 'home_pitcher' in rotowire_game:
+                            home_pitcher = rotowire_game['home_pitcher']
+                        if away_pitcher == "TBD" and 'away_pitcher' in rotowire_game:
+                            away_pitcher = rotowire_game['away_pitcher']
+            
+            # Validate lineups - make sure they're not suspicious (like full rosters)
+            if len(home_lineup) > 15:
+                logger.warning(f"Suspiciously large home lineup ({len(home_lineup)} players) - likely a full roster. Using empty lineup instead.")
+                home_lineup = []
+                
+            if len(away_lineup) > 15:
+                logger.warning(f"Suspiciously large away lineup ({len(away_lineup)} players) - likely a full roster. Using empty lineup instead.")
+                away_lineup = []
+            
+            # Store lineups and pitchers in result dictionaries
+            lineups[game_id] = {
+                'home': home_lineup,
+                'away': away_lineup
+            }
+            
+            probable_pitchers[game_id] = {
+                'home': home_pitcher,
+                'away': away_pitcher
+            }
+            
+            # Log the final results
+            logger.info(f"Final lineups for {game_id}: Home - {len(home_lineup)} players, Away - {len(away_lineup)} players")
+            logger.info(f"Final pitchers for {game_id}: Home - {home_pitcher}, Away - {away_pitcher}")
+            
         except Exception as e:
             logger.error(f"Error fetching lineups/pitchers for {game_id}: {e}")
             # Set empty defaults
             lineups[game_id] = {'home': [], 'away': []}
             probable_pitchers[game_id] = {'home': 'TBD', 'away': 'TBD'}
-            
+    
     return lineups, probable_pitchers
