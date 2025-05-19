@@ -14,6 +14,7 @@ from lineup_fetcher import fetch_lineups_and_pitchers
 from lineup_fetcher import fetch_lineups_and_pitchers
 from stats_fetcher import fetch_player_stats, fetch_pitcher_stats, get_player_names_from_lineups, get_pitcher_names_from_probable_pitchers
 from telegram_formatter import format_telegram_message, send_telegram_message
+from prediction_tracker import PredictionTracker
 
 warnings.filterwarnings('ignore')
 
@@ -711,6 +712,42 @@ class MLBHomeRunPredictor:
         except Exception as e:
             logger.error(f"Error calculating workload factor for {pitcher}: {e}")
             return 1.0  # Default neutral factor
+
+    def analyze_handedness_data(self):
+        """Analyze and log handedness data for debugging"""
+        bats_values = {}
+        throws_values = {}
+        
+        # Count handedness values in player stats
+        for player, stats in self.player_stats.items():
+            bats = stats.get('bats', 'Unknown')
+            if bats in bats_values:
+                bats_values[bats] += 1
+            else:
+                bats_values[bats] = 1
+        
+        # Count handedness values in pitcher stats        
+        for pitcher, stats in self.pitcher_stats.items():
+            throws = stats.get('throws', 'Unknown')
+            if throws in throws_values:
+                throws_values[throws] += 1
+            else:
+                throws_values[throws] = 1
+        
+        logger.info(f"Batter handedness distribution: {bats_values}")
+        logger.info(f"Pitcher handedness distribution: {throws_values}")
+        
+        # Return 'Unknown' percentages for monitoring
+        total_batters = sum(bats_values.values())
+        total_pitchers = sum(throws_values.values())
+        
+        unknown_batter_pct = bats_values.get('Unknown', 0) / total_batters if total_batters > 0 else 0
+        unknown_pitcher_pct = throws_values.get('Unknown', 0) / total_pitchers if total_pitchers > 0 else 0
+        
+        return {
+            'unknown_batter_pct': unknown_batter_pct,
+            'unknown_pitcher_pct': unknown_pitcher_pct
+        }
             
     def predict_home_runs(self):
         """Predict HR probability for all players in lineups"""
@@ -727,338 +764,200 @@ class MLBHomeRunPredictor:
             away_pitcher = self.probable_pitchers.get(game_id, {}).get('away', 'Unknown')
             
             # Process home team batters
-            for batter in self.lineups.get(game_id, {}).get('home', []):
-                # Skip if we don't have stats for this player
-                if batter not in self.player_stats:
-                    continue
-                # NEW: Skip if we don't have real stats for this player
-                if batter not in self.player_stats:
-                    logger.info(f"Skipping {batter} - no real stats available")
-                    continue
-                # NEW: Skip if player has insufficient data
-                if self.player_stats[batter].get('games', 0) < 4:
-                    logger.info(f"Skipping {batter} - insufficient games played (<4)")
-                    continue
-                # Skip if simulated data
-                if self.player_stats[batter].get('is_simulated', False):
-                    logger.info(f"Skipping {batter} - using simulated data")
-                    continue
-
-                    
-                # Calculate HR probability components
-                
-                # Recent HR rate
-                recent_hr_rate = self.recent_player_stats.get(batter, {}).get('hr_per_pa', 0)
-                
-                # Season HR rate
-                season_hr_rate = self.player_stats.get(batter, {}).get('hr_per_pa', 0)
-                
-                # Pitcher HR allowed rate
-                pitcher_hr_rate = self.pitcher_stats.get(away_pitcher, {}).get('hr_per_9', 0) / 9  # Per PA
-                
-                # Weather factor
-                weather_factor = self.calculate_weather_factor(game_id, batter)
-                
-                # Platoon advantage
-                platoon_factor = self.calculate_platoon_advantage(batter, away_pitcher)
-                
-                # Barrel percentage (proxy for quality contact)
-                barrel_pct = self.player_stats.get(batter, {}).get('barrel_pct', 0)
-                
-                # Exit velocity
-                exit_velo = self.player_stats.get(batter, {}).get('exit_velo', 0) / 100  # Normalize
-                
-                # Fly ball rate
-                fly_ball_rate = self.player_stats.get(batter, {}).get('fb_pct', 0)
-                
-                # Pull percentage (critical for HR)
-                pull_pct = self.player_stats.get(batter, {}).get('pull_pct', 0)
-                
-                # Hard hit percentage
-                hard_hit_pct = self.player_stats.get(batter, {}).get('hard_hit_pct', 0)
-                
-                # Launch angle (optimal range boost)
-                launch_angle = self.player_stats.get(batter, {}).get('launch_angle', 0)
-                launch_angle_factor = 1.0
-                if 20 <= launch_angle <= 40:  # Optimal launch angle range for HRs
-                    # Peak at around 28-32 degrees
-                    angle_diff = min(abs(launch_angle - 30), 10)  # How far from optimal 30 degrees
-                    launch_angle_factor = 1.0 + (1.0 - angle_diff / 10)  # Higher boost closer to optimal
-                
-                # Pitcher ground ball to fly ball ratio
-                pitcher_gb_fb = self.pitcher_stats.get(away_pitcher, {}).get('gb_fb_ratio', 1.0)
-                # Convert to a factor (lower GB/FB ratio = more fly balls = more HR risk)
-                pitcher_gb_fb_factor = 1.0 + (1.0 - min(pitcher_gb_fb, 2.0) / 2.0)
-                
-                # HR/FB ratio (HR efficiency)
-                hr_fb_ratio = self.player_stats.get(batter, {}).get('hr_fb_ratio', 0)
-                
-                # Batter vs Pitch Type matchup
-                pitch_type_matchup = self.calculate_pitcher_matchup(batter, away_pitcher)
-                
-                # Pitcher workload/fatigue
-                pitcher_workload = self.calculate_workload_factor(away_pitcher)
-                
-                # Batter vs Pitcher history
-                batter_vs_pitcher = self.calculate_batter_vs_pitcher(batter, away_pitcher)
-                
-                # Home/Away split factor
-                home_away_factor = self.calculate_home_away_factor(batter, True)  # True = home team
-                
-                # Hot/Cold streak factor
-                streak_factor = self.calculate_streak_factor(batter)
-                
-                # Expected ISO
-                xiso = self.recent_player_stats.get(batter, {}).get('xISO', 0.150)
-                # Convert to a factor (higher xISO = higher HR probability)
-                # League average xISO is ~0.150, so normalize around that
-                xiso_factor = 1.0 + ((xiso - 0.150) * 4)  # Scale the difference
-                
-                # Expected wOBA
-                xwoba = self.recent_player_stats.get(batter, {}).get('xwOBA', 0.320)
-                # Convert to a factor (higher xwOBA = higher overall offensive value)
-                # League average xwOBA is ~0.320, so normalize around that
-                xwoba_factor = 1.0 + ((xwoba - 0.320) * 2)  # Scale the difference
-                
-                # Calculate weighted HR probability
-                hr_prob = (
-                    WEIGHTS['recent_hr_rate'] * recent_hr_rate +
-                    WEIGHTS['season_hr_rate'] * season_hr_rate +
-                    WEIGHTS['ballpark_factor'] * (ballpark_factor - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_hr_allowed'] * pitcher_hr_rate +
-                    WEIGHTS['weather_factor'] * (weather_factor - 1) +  # Convert to modifier
-                    WEIGHTS['barrel_pct'] * barrel_pct +
-                    WEIGHTS['platoon_advantage'] * (platoon_factor - 1) +  # Convert to modifier
-                    WEIGHTS['exit_velocity'] * exit_velo +
-                    WEIGHTS['fly_ball_rate'] * fly_ball_rate +
-                    WEIGHTS['pull_pct'] * pull_pct +
-                    WEIGHTS['hard_hit_pct'] * hard_hit_pct +
-                    WEIGHTS['launch_angle'] * (launch_angle_factor - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_gb_fb_ratio'] * (pitcher_gb_fb_factor - 1) +  # Convert to modifier
-                    WEIGHTS['hr_fb_ratio'] * hr_fb_ratio +
-                    WEIGHTS['vs_pitch_type'] * (pitch_type_matchup - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_workload'] * (pitcher_workload - 1) +  # Convert to modifier
-                    WEIGHTS['batter_vs_pitcher'] * (batter_vs_pitcher - 1) +  # Convert to modifier
-                    WEIGHTS['home_away_split'] * (home_away_factor - 1) +  # Convert to modifier
-                    WEIGHTS['hot_cold_streak'] * (streak_factor - 1) +  # Convert to modifier
-                    WEIGHTS['xISO'] * (xiso_factor - 1) +  # Convert to modifier
-                    WEIGHTS['xwOBA'] * (xwoba_factor - 1)  # Convert to modifier
-                )
-                
-                # Apply base rate (league average HR rate is ~3%)
-                base_hr_rate = 0.03
-                final_hr_prob = base_hr_rate * (1 + hr_prob)
-                
-                # Cap probability within reasonable limits
-                final_hr_prob = max(0.01, min(0.25, final_hr_prob))
-                
-                # Add prediction
-                hr_predictions.append({
-                    'player': batter,
-                    'team': home_team,
-                    'team_name': game['home_team_name'],
-                    'opponent': away_team,
-                    'opponent_name': game['away_team_name'],
-                    'opponent_pitcher': away_pitcher,
-                    'ballpark': game['ballpark'],
-                    'ballpark_factor': ballpark_factor,
-                    'weather_temp': self.weather_data.get(game_id, {}).get('temp', 0),
-                    'weather_wind': self.weather_data.get(game_id, {}).get('wind_speed', 0),
-                    'weather_factor': weather_factor,
-                    'platoon_advantage': platoon_factor > 1,
-                    'bats': self.player_stats.get(batter, {}).get('bats', '?'),
-                    'throws': self.pitcher_stats.get(away_pitcher, {}).get('throws', '?'),
-                    'recent_hr_rate': recent_hr_rate,
-                    'season_hr_rate': season_hr_rate,
-                    'barrel_pct': barrel_pct,
-                    'exit_velo': self.player_stats.get(batter, {}).get('exit_velo', 0),
-                    'launch_angle': launch_angle,
-                    'pull_pct': pull_pct,
-                    'hard_hit_pct': hard_hit_pct,
-                    'pitcher_gb_fb': pitcher_gb_fb,
-                    'hr_fb_ratio': hr_fb_ratio,
-                    'pitch_type_matchup': pitch_type_matchup,
-                    'pitcher_workload': pitcher_workload,
-                    'batter_vs_pitcher': batter_vs_pitcher,
-                    'home_away_factor': home_away_factor,
-                    'streak_factor': streak_factor,
-                    'xISO': xiso,
-                    'xwOBA': xwoba,
-                    'hr_probability': final_hr_prob,
-                    'game_id': game_id,
-                    'game_time': game['game_time'],
-                    'is_home_team': True
-                })
-                
+            home_batters = self.lineups.get(game_id, {}).get('home', [])
+            self._process_team_batters(
+                hr_predictions, 
+                home_batters, 
+                home_team, 
+                away_team, 
+                away_pitcher, 
+                game, 
+                game_id, 
+                ballpark_factor, 
+                is_home_team=True
+            )
+            
             # Process away team batters
-            for batter in self.lineups.get(game_id, {}).get('away', []):
-                # Skip if we don't have stats for this player
-                if batter not in self.player_stats:
-                    continue
-                # NEW: Skip if we don't have real stats for this player
-                if batter not in self.player_stats:
-                    logger.info(f"Skipping {batter} - no real stats available")
-                    continue
-                # NEW: Skip if player has insufficient data
-                if self.player_stats[batter].get('games', 0) < 4:
-                    logger.info(f"Skipping {batter} - insufficient games played (<4)")
-                    continue
-                # Skip if simulated data
-                if self.player_stats[batter].get('is_simulated', False):
-                    logger.info(f"Skipping {batter} - using simulated data")
-                    continue
-                
-                # Calculate HR probability components
-                
-                # Recent HR rate
-                recent_hr_rate = self.recent_player_stats.get(batter, {}).get('hr_per_pa', 0)
-                
-                # Season HR rate
-                season_hr_rate = self.player_stats.get(batter, {}).get('hr_per_pa', 0)
-                
-                # Pitcher HR allowed rate
-                pitcher_hr_rate = self.pitcher_stats.get(home_pitcher, {}).get('hr_per_9', 0) / 9  # Per PA
-                
-                # Weather factor
-                weather_factor = self.calculate_weather_factor(game_id, batter)
-                
-                # Platoon advantage
-                platoon_factor = self.calculate_platoon_advantage(batter, home_pitcher)
-                
-                # Barrel percentage (proxy for quality contact)
-                barrel_pct = self.player_stats.get(batter, {}).get('barrel_pct', 0)
-                
-                # Exit velocity
-                exit_velo = self.player_stats.get(batter, {}).get('exit_velo', 0) / 100  # Normalize
-                
-                # Fly ball rate
-                fly_ball_rate = self.player_stats.get(batter, {}).get('fb_pct', 0)
-                
-                # Pull percentage (critical for HR)
-                pull_pct = self.player_stats.get(batter, {}).get('pull_pct', 0)
-                
-                # Hard hit percentage
-                hard_hit_pct = self.player_stats.get(batter, {}).get('hard_hit_pct', 0)
-                
-                # Launch angle (optimal range boost)
-                launch_angle = self.player_stats.get(batter, {}).get('launch_angle', 0)
-                launch_angle_factor = 1.0
-                if 20 <= launch_angle <= 40:  # Optimal launch angle range for HRs
-                    # Peak at around 28-32 degrees
-                    angle_diff = min(abs(launch_angle - 30), 10)  # How far from optimal 30 degrees
-                    launch_angle_factor = 1.0 + (1.0 - angle_diff / 10)  # Higher boost closer to optimal
-                
-                # Pitcher ground ball to fly ball ratio
-                pitcher_gb_fb = self.pitcher_stats.get(home_pitcher, {}).get('gb_fb_ratio', 1.0)
-                # Convert to a factor (lower GB/FB ratio = more fly balls = more HR risk)
-                pitcher_gb_fb_factor = 1.0 + (1.0 - min(pitcher_gb_fb, 2.0) / 2.0)
-                
-                # HR/FB ratio (HR efficiency)
-                hr_fb_ratio = self.player_stats.get(batter, {}).get('hr_fb_ratio', 0)
-                
-                # Batter vs Pitch Type matchup
-                pitch_type_matchup = self.calculate_pitcher_matchup(batter, home_pitcher)
-                
-                # Pitcher workload/fatigue
-                pitcher_workload = self.calculate_workload_factor(home_pitcher)
-                
-                # Batter vs Pitcher history
-                batter_vs_pitcher = self.calculate_batter_vs_pitcher(batter, home_pitcher)
-                
-                # Home/Away split factor
-                home_away_factor = self.calculate_home_away_factor(batter, False)  # False = away team
-                
-                # Hot/Cold streak factor
-                streak_factor = self.calculate_streak_factor(batter)
-                
-                # Expected ISO
-                xiso = self.recent_player_stats.get(batter, {}).get('xISO', 0.150)
-                # Convert to a factor (higher xISO = higher HR probability)
-                # League average xISO is ~0.150, so normalize around that
-                xiso_factor = 1.0 + ((xiso - 0.150) * 4)  # Scale the difference
-                
-                # Expected wOBA
-                xwoba = self.recent_player_stats.get(batter, {}).get('xwOBA', 0.320)
-                # Convert to a factor (higher xwOBA = higher overall offensive value)
-                # League average xwOBA is ~0.320, so normalize around that
-                xwoba_factor = 1.0 + ((xwoba - 0.320) * 2)  # Scale the difference
-                
-                # Calculate weighted HR probability
-                hr_prob = (
-                    WEIGHTS['recent_hr_rate'] * recent_hr_rate +
-                    WEIGHTS['season_hr_rate'] * season_hr_rate +
-                    WEIGHTS['ballpark_factor'] * (ballpark_factor - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_hr_allowed'] * pitcher_hr_rate +
-                    WEIGHTS['weather_factor'] * (weather_factor - 1) +  # Convert to modifier
-                    WEIGHTS['barrel_pct'] * barrel_pct +
-                    WEIGHTS['platoon_advantage'] * (platoon_factor - 1) +  # Convert to modifier
-                    WEIGHTS['exit_velocity'] * exit_velo +
-                    WEIGHTS['fly_ball_rate'] * fly_ball_rate +
-                    WEIGHTS['pull_pct'] * pull_pct +
-                    WEIGHTS['hard_hit_pct'] * hard_hit_pct +
-                    WEIGHTS['launch_angle'] * (launch_angle_factor - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_gb_fb_ratio'] * (pitcher_gb_fb_factor - 1) +  # Convert to modifier
-                    WEIGHTS['hr_fb_ratio'] * hr_fb_ratio +
-                    WEIGHTS['vs_pitch_type'] * (pitch_type_matchup - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_workload'] * (pitcher_workload - 1) +  # Convert to modifier
-                    WEIGHTS['batter_vs_pitcher'] * (batter_vs_pitcher - 1) +  # Convert to modifier
-                    WEIGHTS['home_away_split'] * (home_away_factor - 1) +  # Convert to modifier
-                    WEIGHTS['hot_cold_streak'] * (streak_factor - 1) +  # Convert to modifier
-                    WEIGHTS['xISO'] * (xiso_factor - 1) +  # Convert to modifier
-                    WEIGHTS['xwOBA'] * (xwoba_factor - 1)  # Convert to modifier
-                )
-                
-                # Apply base rate (league average HR rate is ~3%)
-                base_hr_rate = 0.03
-                final_hr_prob = base_hr_rate * (1 + hr_prob)
-                
-                # Cap probability within reasonable limits
-                final_hr_prob = max(0.01, min(0.25, final_hr_prob))
-                
-                # Add prediction
-                hr_predictions.append({
-                    'player': batter,
-                    'team': away_team,
-                    'team_name': game['away_team_name'],
-                    'opponent': home_team,
-                    'opponent_name': game['home_team_name'],
-                    'opponent_pitcher': home_pitcher,
-                    'ballpark': game['ballpark'],
-                    'ballpark_factor': ballpark_factor,
-                    'weather_temp': self.weather_data.get(game_id, {}).get('temp', 0),
-                    'weather_wind': self.weather_data.get(game_id, {}).get('wind_speed', 0),
-                    'weather_factor': weather_factor,
-                    'platoon_advantage': platoon_factor > 1,
-                    'bats': self.player_stats.get(batter, {}).get('bats', '?'),
-                    'throws': self.pitcher_stats.get(home_pitcher, {}).get('throws', '?'),
-                    'recent_hr_rate': recent_hr_rate,
-                    'season_hr_rate': season_hr_rate,
-                    'barrel_pct': barrel_pct,
-                    'exit_velo': self.player_stats.get(batter, {}).get('exit_velo', 0),
-                    'launch_angle': launch_angle,
-                    'pull_pct': pull_pct,
-                    'hard_hit_pct': hard_hit_pct,
-                    'pitcher_gb_fb': pitcher_gb_fb,
-                    'hr_fb_ratio': hr_fb_ratio,
-                    'pitch_type_matchup': pitch_type_matchup,
-                    'pitcher_workload': pitcher_workload,
-                    'batter_vs_pitcher': batter_vs_pitcher,
-                    'home_away_factor': home_away_factor,
-                    'streak_factor': streak_factor,
-                    'xISO': xiso,
-                    'xwOBA': xwoba,
-                    'hr_probability': final_hr_prob,
-                    'game_id': game_id,
-                    'game_time': game['game_time'],
-                    'is_home_team': False
-                })
-                
+            away_batters = self.lineups.get(game_id, {}).get('away', [])
+            self._process_team_batters(
+                hr_predictions, 
+                away_batters, 
+                away_team, 
+                home_team, 
+                home_pitcher, 
+                game, 
+                game_id, 
+                ballpark_factor, 
+                is_home_team=False
+            )
+                    
         # Convert to DataFrame and sort by HR probability
         predictions_df = pd.DataFrame(hr_predictions)
         if not predictions_df.empty:
             predictions_df = predictions_df.sort_values(by='hr_probability', ascending=False)
             
         return predictions_df
+
+    def _process_team_batters(self, hr_predictions, batters, team, opponent_team, opponent_pitcher, game, game_id, ballpark_factor, is_home_team):
+        """Process batters for a team and calculate HR probabilities"""
+        for batter in batters:
+            # Skip if we don't have stats for this player
+            if batter not in self.player_stats:
+                continue
+            # Skip if player has insufficient data
+            if self.player_stats[batter].get('games', 0) < 4:
+                logger.info(f"Skipping {batter} - insufficient games played (<4)")
+                continue
+            # Skip if simulated data
+            if self.player_stats[batter].get('is_simulated', False):
+                logger.info(f"Skipping {batter} - using simulated data")
+                continue
+                
+            # Calculate HR probability components
+            
+            # Recent HR rate
+            recent_hr_rate = self.recent_player_stats.get(batter, {}).get('hr_per_pa', 0)
+            
+            # Season HR rate
+            season_hr_rate = self.player_stats.get(batter, {}).get('hr_per_pa', 0)
+            
+            # Pitcher HR allowed rate
+            pitcher_hr_rate = self.pitcher_stats.get(opponent_pitcher, {}).get('hr_per_9', 0) / 9  # Per PA
+            
+            # Weather factor
+            weather_factor = self.calculate_weather_factor(game_id, batter)
+            
+            # Platoon advantage
+            platoon_factor = self.calculate_platoon_advantage(batter, opponent_pitcher)
+            
+            # Barrel percentage (proxy for quality contact)
+            barrel_pct = self.player_stats.get(batter, {}).get('barrel_pct', 0)
+            
+            # Exit velocity
+            exit_velo = self.player_stats.get(batter, {}).get('exit_velo', 0) / 100  # Normalize
+            
+            # Fly ball rate
+            fly_ball_rate = self.player_stats.get(batter, {}).get('fb_pct', 0)
+            
+            # Pull percentage (critical for HR)
+            pull_pct = self.player_stats.get(batter, {}).get('pull_pct', 0)
+            
+            # Hard hit percentage
+            hard_hit_pct = self.player_stats.get(batter, {}).get('hard_hit_pct', 0)
+            
+            # Launch angle (optimal range boost)
+            launch_angle = self.player_stats.get(batter, {}).get('launch_angle', 0)
+            launch_angle_factor = 1.0
+            if 20 <= launch_angle <= 40:  # Optimal launch angle range for HRs
+                # Peak at around 28-32 degrees
+                angle_diff = min(abs(launch_angle - 30), 10)  # How far from optimal 30 degrees
+                launch_angle_factor = 1.0 + (1.0 - angle_diff / 10)  # Higher boost closer to optimal
+            
+            # Pitcher ground ball to fly ball ratio
+            pitcher_gb_fb = self.pitcher_stats.get(opponent_pitcher, {}).get('gb_fb_ratio', 1.0)
+            # Convert to a factor (lower GB/FB ratio = more fly balls = more HR risk)
+            pitcher_gb_fb_factor = 1.0 + (1.0 - min(pitcher_gb_fb, 2.0) / 2.0)
+            
+            # HR/FB ratio (HR efficiency)
+            hr_fb_ratio = self.player_stats.get(batter, {}).get('hr_fb_ratio', 0)
+            
+            # Batter vs Pitch Type matchup
+            pitch_type_matchup = self.calculate_pitcher_matchup(batter, opponent_pitcher)
+            
+            # Pitcher workload/fatigue
+            pitcher_workload = self.calculate_workload_factor(opponent_pitcher)
+            
+            # Batter vs Pitcher history
+            batter_vs_pitcher = self.calculate_batter_vs_pitcher(batter, opponent_pitcher)
+            
+            # Home/Away split factor
+            home_away_factor = self.calculate_home_away_factor(batter, is_home_team)
+            
+            # Hot/Cold streak factor
+            streak_factor = self.calculate_streak_factor(batter)
+            
+            # Expected ISO
+            xiso = self.recent_player_stats.get(batter, {}).get('xISO', 0.150)
+            # Convert to a factor (higher xISO = higher HR probability)
+            # League average xISO is ~0.150, so normalize around that
+            xiso_factor = 1.0 + ((xiso - 0.150) * 4)  # Scale the difference
+            
+            # Expected wOBA
+            xwoba = self.recent_player_stats.get(batter, {}).get('xwOBA', 0.320)
+            # Convert to a factor (higher xwOBA = higher overall offensive value)
+            # League average xwOBA is ~0.320, so normalize around that
+            xwoba_factor = 1.0 + ((xwoba - 0.320) * 2)  # Scale the difference
+            
+            # Calculate weighted HR probability
+            hr_prob = (
+                WEIGHTS['recent_hr_rate'] * recent_hr_rate +
+                WEIGHTS['season_hr_rate'] * season_hr_rate +
+                WEIGHTS['ballpark_factor'] * (ballpark_factor - 1) +  # Convert to modifier
+                WEIGHTS['pitcher_hr_allowed'] * pitcher_hr_rate +
+                WEIGHTS['weather_factor'] * (weather_factor - 1) +  # Convert to modifier
+                WEIGHTS['barrel_pct'] * barrel_pct +
+                WEIGHTS['platoon_advantage'] * (platoon_factor - 1) +  # Convert to modifier
+                WEIGHTS['exit_velocity'] * exit_velo +
+                WEIGHTS['fly_ball_rate'] * fly_ball_rate +
+                WEIGHTS['pull_pct'] * pull_pct +
+                WEIGHTS['hard_hit_pct'] * hard_hit_pct +
+                WEIGHTS['launch_angle'] * (launch_angle_factor - 1) +  # Convert to modifier
+                WEIGHTS['pitcher_gb_fb_ratio'] * (pitcher_gb_fb_factor - 1) +  # Convert to modifier
+                WEIGHTS['hr_fb_ratio'] * hr_fb_ratio +
+                WEIGHTS['vs_pitch_type'] * (pitch_type_matchup - 1) +  # Convert to modifier
+                WEIGHTS['pitcher_workload'] * (pitcher_workload - 1) +  # Convert to modifier
+                WEIGHTS['batter_vs_pitcher'] * (batter_vs_pitcher - 1) +  # Convert to modifier
+                WEIGHTS['home_away_split'] * (home_away_factor - 1) +  # Convert to modifier
+                WEIGHTS['hot_cold_streak'] * (streak_factor - 1) +  # Convert to modifier
+                WEIGHTS['xISO'] * (xiso_factor - 1) +  # Convert to modifier
+                WEIGHTS['xwOBA'] * (xwoba_factor - 1)  # Convert to modifier
+            )
+            
+            # Apply base rate (league average HR rate is ~3%)
+            base_hr_rate = 0.03
+            final_hr_prob = base_hr_rate * (1 + hr_prob)
+            
+            # Cap probability within reasonable limits
+            final_hr_prob = max(0.01, min(0.25, final_hr_prob))
+            
+            # Add prediction
+            hr_predictions.append({
+                'player': batter,
+                'team': team,
+                'team_name': game['home_team_name'] if is_home_team else game['away_team_name'],
+                'opponent': opponent_team,
+                'opponent_name': game['away_team_name'] if is_home_team else game['home_team_name'],
+                'opponent_pitcher': opponent_pitcher,
+                'ballpark': game['ballpark'],
+                'ballpark_factor': ballpark_factor,
+                'weather_temp': self.weather_data.get(game_id, {}).get('temp', 0),
+                'weather_wind': self.weather_data.get(game_id, {}).get('wind_speed', 0),
+                'weather_factor': weather_factor,
+                'platoon_advantage': platoon_factor > 1,
+                'bats': self.player_stats.get(batter, {}).get('bats', '?'),
+                'throws': self.pitcher_stats.get(opponent_pitcher, {}).get('throws', '?'),
+                'recent_hr_rate': recent_hr_rate,
+                'season_hr_rate': season_hr_rate,
+                'pitcher_hr_rate': pitcher_hr_rate,
+                'barrel_pct': barrel_pct,
+                'exit_velo': self.player_stats.get(batter, {}).get('exit_velo', 0),
+                'launch_angle': launch_angle,
+                'pull_pct': pull_pct,
+                'hard_hit_pct': hard_hit_pct,
+                'pitcher_gb_fb': pitcher_gb_fb,
+                'hr_fb_ratio': hr_fb_ratio,
+                'pitch_type_matchup': pitch_type_matchup,
+                'pitcher_workload': pitcher_workload,
+                'batter_vs_pitcher': batter_vs_pitcher,
+                'home_away_factor': home_away_factor,
+                'streak_factor': streak_factor,
+                'xISO': xiso,
+                'xwOBA': xwoba,
+                'hr_probability': final_hr_prob,
+                'game_id': game_id,
+                'game_time': game['game_time'],
+                'is_home_team': is_home_team
+            })
         
     def categorize_predictions(self, predictions_df, top_n=10):
         """Categorize HR predictions into tiers"""
@@ -1135,28 +1034,12 @@ class MLBHomeRunPredictor:
             self.fetch_player_stats()
             self.fetch_pitcher_stats()
 
-            # Add this diagnostic code directly
-            bats_values = {}
-            throws_values = {}
-            
-            # Count handedness values in player stats
-            for player, stats in self.player_stats.items():
-                bats = stats.get('bats', 'Unknown')
-                if bats in bats_values:
-                    bats_values[bats] += 1
-                else:
-                    bats_values[bats] = 1
-            
-            # Count handedness values in pitcher stats        
-            for pitcher, stats in self.pitcher_stats.items():
-                throws = stats.get('throws', 'Unknown')
-                if throws in throws_values:
-                    throws_values[throws] += 1
-                else:
-                    throws_values[throws] = 1
-            
-            logger.info(f"Batter handedness distribution: {bats_values}")
-            logger.info(f"Pitcher handedness distribution: {throws_values}")
+            # Analyze handedness data after fetching stats
+            handedness_stats = self.analyze_handedness_data()
+            if handedness_stats['unknown_batter_pct'] > 0.3:
+                logger.warning(f"High percentage of unknown batter handedness: {handedness_stats['unknown_batter_pct']:.1%}")
+            if handedness_stats['unknown_pitcher_pct'] > 0.3:
+                logger.warning(f"High percentage of unknown pitcher handedness: {handedness_stats['unknown_pitcher_pct']:.1%}")
             
             # Step 5: Predict HR probabilities
             predictions_df = self.predict_home_runs()

@@ -6,6 +6,62 @@ import time
 # Configure logging (or import your logging config)
 logger = logging.getLogger('MLB-HR-Predictor')
 
+def extract_batter_handedness(player_data):
+    """Extract player batting handedness with better error handling"""
+    if not isinstance(player_data, dict):
+        return 'Unknown'
+        
+    # Try multiple paths to find handedness
+    if 'batSide' in player_data and isinstance(player_data['batSide'], dict) and 'code' in player_data['batSide']:
+        return player_data['batSide']['code']
+    elif 'bat_side' in player_data and isinstance(player_data['bat_side'], dict) and 'code' in player_data['bat_side']:
+        return player_data['bat_side']['code']
+    
+    # Try alternate structure
+    bat_side = player_data.get('batSide', {})
+    if isinstance(bat_side, str):
+        if bat_side in ['R', 'L', 'S']:
+            return bat_side
+    
+    # If player name contains "(L)" or "(R)" pattern common in some data
+    if 'fullName' in player_data:
+        name = player_data['fullName']
+        if '(R)' in name:
+            return 'R'
+        elif '(L)' in name:
+            return 'L'
+        elif '(S)' in name:
+            return 'S'
+            
+    return 'Unknown'
+
+def extract_pitcher_handedness(pitcher_data):
+    """Extract pitcher throwing handedness with better error handling"""
+    if not isinstance(pitcher_data, dict):
+        return 'Unknown'
+        
+    # Try multiple paths to find handedness
+    if 'pitchHand' in pitcher_data and isinstance(pitcher_data['pitchHand'], dict) and 'code' in pitcher_data['pitchHand']:
+        return pitcher_data['pitchHand']['code']
+    elif 'pitch_hand' in pitcher_data and isinstance(pitcher_data['pitch_hand'], dict) and 'code' in pitcher_data['pitch_hand']:
+        return pitcher_data['pitch_hand']['code']
+    
+    # Try alternate structure
+    pitch_hand = pitcher_data.get('pitchHand', {})
+    if isinstance(pitch_hand, str):
+        if pitch_hand in ['R', 'L']:
+            return pitch_hand
+            
+    # If pitcher name contains "(LHP)" or "(RHP)" pattern common in some data
+    if 'fullName' in pitcher_data:
+        name = pitcher_data['fullName']
+        if 'RHP' in name or '(R)' in name:
+            return 'R'
+        elif 'LHP' in name or '(L)' in name:
+            return 'L'
+            
+    return 'Unknown'
+
 def fetch_player_stats(player_names, generate_simulated_stats=False):
     """
     Fetch season and recent stats for all players using MLB Stats API.
@@ -65,15 +121,7 @@ def fetch_player_stats(player_names, generate_simulated_stats=False):
                 # Get handedness with safer access
                 bats = 'Unknown'
                 if isinstance(player_search[0], dict):
-                    bat_side = player_search[0].get('batSide', {})
-                    if isinstance(bat_side, dict) and 'code' in bat_side:
-                        bat_code = bat_side['code']
-                        if bat_code == 'R':
-                            bats = 'R'
-                        elif bat_code == 'L':
-                            bats = 'L'
-                        elif bat_code == 'S':
-                            bats = 'S'  # Switch hitter
+                    bats = extract_batter_handedness(player_search[0])
                 
                 # Get player's 2025 season stats
                 player_stats_response = None
@@ -346,13 +394,8 @@ def fetch_pitcher_stats(pitcher_names):
                 
                 # Get handedness with safe access
                 throws = 'Unknown'
-                pitch_hand = pitcher_search[0].get('pitchHand', {})
-                if isinstance(pitch_hand, dict) and 'code' in pitch_hand:
-                    hand_code = pitch_hand['code']
-                    if hand_code == 'R':
-                        throws = 'R'
-                    elif hand_code == 'L':
-                        throws = 'L'
+                if isinstance(pitcher_search[0], dict):
+                    throws = extract_pitcher_handedness(pitcher_search[0])
                 
                 # Try to get real stats from MLB API
                 pitcher_stats_response = None
