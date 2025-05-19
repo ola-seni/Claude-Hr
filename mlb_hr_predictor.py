@@ -15,6 +15,7 @@ from lineup_fetcher import fetch_lineups_and_pitchers
 from stats_fetcher import fetch_player_stats, fetch_pitcher_stats, get_player_names_from_lineups, get_pitcher_names_from_probable_pitchers
 from telegram_formatter import format_telegram_message, send_telegram_message
 from prediction_tracker import PredictionTracker
+from baseball_savant import get_savant_data, get_seasonal_data, get_ballpark_data
 
 warnings.filterwarnings('ignore')
 
@@ -77,29 +78,56 @@ TEAM_CODES = {
     'Tigers': 'DET', 'Twins': 'MIN', 'White Sox': 'CWS', 'Yankees': 'NYY'
 }
 
-# Weight factors for HR prediction
+# Weight factors for HR prediction - rebalanced to maintain proper scaling
 WEIGHTS = {
-    'recent_hr_rate': 0.11,            # Recent 7-10 day HR rate
-    'season_hr_rate': 0.07,            # Season HR rate
-    'ballpark_factor': 0.06,           # Ballpark HR factor
-    'pitcher_hr_allowed': 0.07,        # Pitcher HR/9 rate
-    'weather_factor': 0.04,            # Weather conditions
-    'barrel_pct': 0.06,                # Barrel percentage 
-    'platoon_advantage': 0.03,         # Platoon advantage
-    'exit_velocity': 0.05,             # Exit velocity
-    'fly_ball_rate': 0.02,             # Fly ball rate
-    'pull_pct': 0.06,                  # Pull percentage (critical for HR)
-    'hard_hit_pct': 0.05,              # Hard hit % (95+ mph)
-    'launch_angle': 0.04,              # Launch angle (optimal: 25-35°)
-    'pitcher_gb_fb_ratio': 0.03,       # Pitcher ground ball to fly ball ratio
-    'hr_fb_ratio': 0.03,               # HR to fly ball ratio (HR efficiency)
-    'vs_pitch_type': 0.03,             # Batter performance vs pitcher's primary pitch
-    'pitcher_workload': 0.02,          # Recent pitcher workload/fatigue
-    'batter_vs_pitcher': 0.04,         # Historical batter vs pitcher matchup
-    'home_away_split': 0.03,           # Home/Away performance splits
-    'hot_cold_streak': 0.05,           # Hot/cold streak momentum indicator
-    'xISO': 0.07,                      # Expected Isolated Power (pure power metric)
-    'xwOBA': 0.06                      # Expected wOBA (quality of contact metric)
+    # Core metrics - keep these strong
+    'recent_hr_rate': 0.10,            # Recent 7-10 day HR rate (slightly reduced)
+    'season_hr_rate': 0.07,            # Season HR rate (unchanged - foundational)
+    'ballpark_factor': 0.05,           # Ballpark HR factor (slightly reduced)
+    'pitcher_hr_allowed': 0.06,        # Pitcher HR/9 rate (slightly reduced)
+    
+    # Contact quality metrics - consolidated influence
+    'barrel_pct': 0.05,                # Barrel percentage (reduced)
+    'exit_velocity': 0.04,             # Exit velocity (reduced)
+    'hard_hit_pct': 0.04,              # Hard hit % (reduced)
+    'launch_angle': 0.03,              # Launch angle (reduced)
+    
+    # Batted ball direction metrics - consolidated
+    'pull_pct': 0.04,                  # Pull percentage (reduced)
+    'fly_ball_rate': 0.02,             # Fly ball rate (unchanged - already small)
+    'hr_fb_ratio': 0.03,               # HR to fly ball ratio (unchanged)
+    
+    # Matchup factors - slightly reduced
+    'platoon_advantage': 0.03,         # Platoon advantage (unchanged)
+    'vs_pitch_type': 0.02,             # Batter vs pitch type (reduced)
+    'pitcher_gb_fb_ratio': 0.02,       # Pitcher ground ball to fly ball ratio (reduced)
+    'pitcher_workload': 0.02,          # Pitcher workload/fatigue (unchanged)
+    'batter_vs_pitcher': 0.03,         # Historical matchup (reduced)
+    
+    # Contextual factors
+    'weather_factor': 0.03,            # Weather conditions (reduced)
+    'home_away_split': 0.02,           # Home/Away splits (reduced)
+    'hot_cold_streak': 0.04,           # Hot/cold streak (reduced)
+    
+    # Advanced metrics
+    'xISO': 0.06,                      # Expected Isolated Power (slightly reduced)
+    'xwOBA': 0.05,                     # Expected wOBA (reduced)
+    
+    # New threshold-based factors
+    'slg_factor': 0.05,                # SLG threshold (reduced)
+    'iso_factor': 0.05,                # ISO threshold (reduced)
+    'l15_barrel_factor': 0.04,         # Last 15 days barrel% threshold (reduced)
+    'l15_ev_factor': 0.04,             # Last 15 days exit velo threshold (reduced)
+    'barrel_rate_factor': 0.04,        # Barrel rate threshold (reduced)
+    'exit_velo_factor': 0.04,          # Exit velo threshold (reduced)
+    'hr_pct_factor': 0.04,             # HR% threshold (reduced)
+    
+    # New complex metrics
+    'hard_hit_distance': 0.05,         # Hard hit distance factor
+    'pitch_specific': 0.04,            # Pitch-specific performance
+    'spray_angle': 0.04,               # Spray angle/pull vs oppo power
+    'zone_contact': 0.04,              # Zone location contact quality
+    'park_specific': 0.04              # Park-specific performance
 }
 
 class MLBHomeRunPredictor:
@@ -404,6 +432,84 @@ class MLBHomeRunPredictor:
         except Exception as e:
             logger.error(f"Error calculating platoon advantage for {batter} vs {pitcher}: {e}")
             return 1.0  # Default neutral factor
+
+    def integrate_savant_data(self):
+        """Integrate Baseball Savant data into existing stats"""
+        logger.info("Integrating Baseball Savant data")
+        
+        # Get player and pitcher names
+        player_names = get_player_names_from_lineups(self.lineups)
+        pitcher_names = get_pitcher_names_from_probable_pitchers(self.probable_pitchers)
+
+        # Get recent data (last 15 days)
+        batter_savant, pitcher_savant = get_savant_data(player_names, pitcher_names)
+        
+        # Get seasonal data for more statistical significance
+        batter_season, pitcher_season = get_seasonal_data(player_names, pitcher_names)
+        
+        # Integrate data (prioritize recent data, fall back to seasonal)
+        for player_name in self.player_stats:
+            # Get recent data if available, otherwise use seasonal
+            savant_data = batter_savant.get(player_name, batter_season.get(player_name, {}))
+            
+            if savant_data:
+                # Update spray angle data
+                spray_data = savant_data.get('spray_angle', {})
+                self.player_stats[player_name]['spray_angle'] = {
+                    'pull_pct': spray_data.get('pull_pct', self.player_stats[player_name].get('pull_pct', 0.4)),
+                    'center_pct': spray_data.get('center_pct', 0.33),
+                    'oppo_pct': spray_data.get('oppo_pct', 0.27),
+                    'pull_slg': spray_data.get('pull_slg', 0.5),
+                    'center_slg': spray_data.get('center_slg', 0.5),
+                    'oppo_slg': spray_data.get('oppo_slg', 0.5)
+                }
+                
+                # Update zone contact data
+                zone_data = savant_data.get('zone_contact', {})
+                self.player_stats[player_name]['zone_contact'] = {
+                    'up_barrel_pct': zone_data.get('up_barrel_pct', 0.05),
+                    'middle_barrel_pct': zone_data.get('middle_barrel_pct', 0.05),
+                    'down_barrel_pct': zone_data.get('down_barrel_pct', 0.05),
+                    'in_barrel_pct': zone_data.get('in_barrel_pct', 0.05),
+                    'out_barrel_pct': zone_data.get('out_barrel_pct', 0.05)
+                }
+                
+                logger.info(f"Updated Savant data for batter: {player_name}")
+                
+                # NEW CODE: Check if player is in away games and add ballpark-specific data
+                for _, game in self.games.iterrows():
+                    game_id = game['game_id']
+                    home_team = game['home_team']
+                    
+                    # Check if player is in this game
+                    for lineup_game_id, lineup in self.lineups.items():
+                        if game_id == lineup_game_id:
+                            if player_name in lineup.get('home', []):
+                                # Player is playing in their home park - no need for ballpark analysis
+                                break
+                            elif player_name in lineup.get('away', []):
+                                # Player is visiting - check their history in this ballpark
+                                ballpark_data = get_ballpark_data(player_name)
+                                
+                                # Get this ballpark's name
+                                ballpark_name = game.get('ballpark', '')
+                                
+                                if ballpark_name in ballpark_data:
+                                    # Add ballpark-specific performance
+                                    self.player_stats[player_name]['ballpark_history'] = ballpark_data[ballpark_name]
+                                    logger.info(f"Added ballpark history for {player_name} in {ballpark_name}")
+        
+        # Integrate pitcher data
+        for pitcher_name, savant_data in pitcher_savant.items():
+            if pitcher_name in self.pitcher_stats:
+                # Update zone profile
+                zone_profile = savant_data.get('zone_profile', {})
+                self.pitcher_stats[pitcher_name]['zone_profile'] = zone_profile
+                
+                # Update primary tendency
+                self.pitcher_stats[pitcher_name]['primary_tendency'] = savant_data.get('primary_tendency', 'mixed')
+                
+                logger.info(f"Updated Savant data for pitcher: {pitcher_name}")
 
     def calculate_streak_factor(self, batter):
         """Calculate hot/cold streak factor based on recent performance"""
@@ -713,6 +819,67 @@ class MLBHomeRunPredictor:
             logger.error(f"Error calculating workload factor for {pitcher}: {e}")
             return 1.0  # Default neutral factor
 
+    def get_pitcher_primary_pitch(self, pitcher):
+        """Determine primary pitch type for a pitcher"""
+        pitcher_data = self.pitcher_stats.get(pitcher, {})
+        
+        # Find highest usage pitch
+        fastball_pct = pitcher_data.get('fastball_pct', 0.6)
+        breaking_pct = pitcher_data.get('breaking_pct', 0.25)
+        offspeed_pct = pitcher_data.get('offspeed_pct', 0.15)
+        
+        # Return the pitch type with highest usage
+        if fastball_pct >= breaking_pct and fastball_pct >= offspeed_pct:
+            return 'fastball'
+        elif breaking_pct >= fastball_pct and breaking_pct >= offspeed_pct:
+            return 'breaking'
+        else:
+            return 'offspeed'
+
+    def is_ballpark_pull_friendly(self, team_code, batter_hand):
+        """Determine if ballpark is pull-friendly for this batter's handedness"""
+        # Right-handed pull hitters (to left field)
+        rhb_pull_friendly = ['NYY', 'HOU', 'BOS', 'CIN', 'CHC', 'COL']
+        
+        # Left-handed pull hitters (to right field)
+        lhb_pull_friendly = ['NYY', 'BAL', 'HOU', 'TEX', 'CIN', 'MIL', 'COL', 'PHI']
+        
+        if batter_hand == 'R' and team_code in rhb_pull_friendly:
+            return True
+        elif batter_hand == 'L' and team_code in lhb_pull_friendly:
+            return True
+        elif batter_hand == 'S':  # Switch hitters get advantage in all pull-friendly parks
+            return team_code in rhb_pull_friendly or team_code in lhb_pull_friendly
+        
+        return False
+
+    def get_pitcher_zone_tendency(self, pitcher):
+        """Determine where pitcher tends to locate pitches"""
+        pitcher_data = self.pitcher_stats.get(pitcher, {})
+        
+        # This is a simplified model since we don't have actual pitch location data
+        # Use some pitcher characteristics to estimate tendencies
+        
+        fb_pct = pitcher_data.get('fb_pct', 0.35)
+        gb_pct = pitcher_data.get('gb_pct', 0.45)
+        throws = pitcher_data.get('throws', 'Unknown')
+        
+        # Pitchers with high fly ball rates tend to pitch up in the zone
+        # Pitchers with high ground ball rates tend to pitch down in the zone
+        
+        if fb_pct > 0.40:
+            return 'up'
+        elif gb_pct > 0.50:
+            return 'down'
+        elif throws == 'L':
+            # Left-handed pitchers tend to pitch more outside to righties, inside to lefties
+            return 'out'
+        elif throws == 'R':
+            # Right-handed pitchers have various tendencies
+            return 'mixed'
+        
+        return 'mixed'  # Default
+
     def analyze_handedness_data(self):
         """Analyze and log handedness data for debugging"""
         bats_values = {}
@@ -833,8 +1000,11 @@ class MLBHomeRunPredictor:
             # Barrel percentage (proxy for quality contact)
             barrel_pct = self.player_stats.get(batter, {}).get('barrel_pct', 0)
             
-            # Exit velocity
-            exit_velo = self.player_stats.get(batter, {}).get('exit_velo', 0) / 100  # Normalize
+            # Exit velocity - normalize for calculation
+            exit_velo_normalized = self.player_stats.get(batter, {}).get('exit_velo', 0) / 100  # Normalize
+            
+            # Raw exit velocity - for thresholds
+            exit_velo = self.player_stats.get(batter, {}).get('exit_velo', 0)
             
             # Fly ball rate
             fly_ball_rate = self.player_stats.get(batter, {}).get('fb_pct', 0)
@@ -875,6 +1045,57 @@ class MLBHomeRunPredictor:
             
             # Hot/Cold streak factor
             streak_factor = self.calculate_streak_factor(batter)
+
+            # SLG factor (threshold-based)
+            slg = self.player_stats.get(batter, {}).get('slg', 0)
+            if slg > 0.550:  # Ideal threshold
+                slg_factor = 1.4
+            elif slg > 0.500:  # Minimum threshold
+                slg_factor = 1.2
+            else:
+                slg_factor = 1.0
+
+            # ISO factor (threshold-based)
+            iso = self.player_stats.get(batter, {}).get('iso', 0)
+            if iso > 0.300:  # Ideal threshold
+                iso_factor = 1.4
+            elif iso > 0.250:  # Minimum threshold
+                iso_factor = 1.2
+            else:
+                iso_factor = 1.0
+
+            # L15 Barrel factor
+            l15_barrel = self.recent_player_stats.get(batter, {}).get('barrel_pct', 0)
+            if l15_barrel > 0.25:  # 25%+ threshold
+                l15_barrel_factor = 1.5
+            else:
+                l15_barrel_factor = 1.0
+
+            # L15 Exit Velocity factor
+            l15_ev = self.recent_player_stats.get(batter, {}).get('exit_velo', 0)
+            if l15_ev > 95:  # 95+ MPH threshold
+                l15_ev_factor = 1.4
+            else:
+                l15_ev_factor = 1.0
+
+            # Season barrel rate factor
+            if barrel_pct > 0.20:  # 20%+ threshold
+                barrel_rate_factor = 1.5
+            else:
+                barrel_rate_factor = 1.0
+
+            # Season exit velocity factor
+            if exit_velo > 95:  # 95+ MPH threshold
+                exit_velo_factor = 1.4
+            else:
+                exit_velo_factor = 1.0
+
+            # HR% factor - use hr_per_pa as it's the same metric
+            hr_pct = season_hr_rate  # Use existing hr_per_pa as hr_pct
+            if hr_pct > 0.10:  # 10%+ threshold
+                hr_pct_factor = 1.5
+            else:
+                hr_pct_factor = 1.0
             
             # Expected ISO
             xiso = self.recent_player_stats.get(batter, {}).get('xISO', 0.150)
@@ -887,6 +1108,73 @@ class MLBHomeRunPredictor:
             # Convert to a factor (higher xwOBA = higher overall offensive value)
             # League average xwOBA is ~0.320, so normalize around that
             xwoba_factor = 1.0 + ((xwoba - 0.320) * 2)  # Scale the difference
+
+            # Hard Hit Distance factor
+            hard_hit_distance = self.player_stats.get(batter, {}).get('hard_hit_distance', 0)
+            if hard_hit_distance > 380:
+                hard_hit_distance_factor = 1.4
+            elif hard_hit_distance > 350:
+                hard_hit_distance_factor = 1.2
+            else:
+                hard_hit_distance_factor = 1.0
+
+            # Pitch-specific performance factor
+            primary_pitch = self.get_pitcher_primary_pitch(opponent_pitcher)
+            pitch_specific_data = self.player_stats.get(batter, {}).get('pitch_specific', {})
+            pitch_hr_rate = pitch_specific_data.get(f'{primary_pitch}_hr_rate', 0)
+
+            if season_hr_rate > 0:
+                pitch_specific_factor = 1.0 + (pitch_hr_rate / season_hr_rate - 1.0) 
+            else:
+                pitch_specific_factor = 1.0
+                
+            pitch_specific_factor = max(0.8, min(1.5, pitch_specific_factor))
+
+            # Spray Angle factor
+            spray_data = self.player_stats.get(batter, {}).get('spray_angle', {})
+            ballpark_pull_friendly = self.is_ballpark_pull_friendly(
+                game['home_team'], self.player_stats.get(batter, {}).get('bats', 'R')
+            )
+
+            if ballpark_pull_friendly and spray_data.get('pull_pct', 0) > 0.45:
+                # Pull hitter in pull-friendly park
+                spray_angle_factor = 1.3
+            elif not ballpark_pull_friendly and spray_data.get('oppo_pct', 0) > 0.30:
+                # Opposite field hitter in opposite-field friendly park
+                spray_angle_factor = 1.2
+            else:
+                spray_angle_factor = 1.0
+
+            # Zone Contact factor
+            zone_data = self.player_stats.get(batter, {}).get('zone_contact', {})
+            pitcher_zone_tendency = self.get_pitcher_zone_tendency(opponent_pitcher)
+
+            if pitcher_zone_tendency == 'up' and zone_data.get('up_barrel_pct', 0) > 0.15:
+                # Batter barrels high pitches well, facing high-ball pitcher
+                zone_contact_factor = 1.3
+            elif pitcher_zone_tendency == 'down' and zone_data.get('down_barrel_pct', 0) > 0.15:
+                # Batter barrels low pitches well, facing low-ball pitcher
+                zone_contact_factor = 1.3
+            elif pitcher_zone_tendency == 'in' and zone_data.get('in_barrel_pct', 0) > 0.15:
+                # Batter barrels inside pitches well
+                zone_contact_factor = 1.2
+            elif pitcher_zone_tendency == 'out' and zone_data.get('out_barrel_pct', 0) > 0.15:
+                # Batter barrels outside pitches well
+                zone_contact_factor = 1.2
+            else:
+                zone_contact_factor = 1.0
+
+            # Park-specific performance
+            park_specific_factor = 1.0  # Default
+            if game['home_team'] in BALLPARKS:
+                # Use the ballpark factor as a base
+                park_factor = BALLPARKS[game['home_team']].get('factor', 1.0)
+                
+                # If batter has above-average power metrics, amplify the park effect
+                if self.player_stats.get(batter, {}).get('xISO', 0) > 0.180:
+                    park_specific_factor = 1.0 + (park_factor - 1.0) * 1.2
+                else:
+                    park_specific_factor = 1.0 + (park_factor - 1.0) * 0.8
             
             # Calculate weighted HR probability
             hr_prob = (
@@ -897,7 +1185,7 @@ class MLBHomeRunPredictor:
                 WEIGHTS['weather_factor'] * (weather_factor - 1) +  # Convert to modifier
                 WEIGHTS['barrel_pct'] * barrel_pct +
                 WEIGHTS['platoon_advantage'] * (platoon_factor - 1) +  # Convert to modifier
-                WEIGHTS['exit_velocity'] * exit_velo +
+                WEIGHTS['exit_velocity'] * exit_velo_normalized +  # Use normalized version
                 WEIGHTS['fly_ball_rate'] * fly_ball_rate +
                 WEIGHTS['pull_pct'] * pull_pct +
                 WEIGHTS['hard_hit_pct'] * hard_hit_pct +
@@ -910,54 +1198,78 @@ class MLBHomeRunPredictor:
                 WEIGHTS['home_away_split'] * (home_away_factor - 1) +  # Convert to modifier
                 WEIGHTS['hot_cold_streak'] * (streak_factor - 1) +  # Convert to modifier
                 WEIGHTS['xISO'] * (xiso_factor - 1) +  # Convert to modifier
-                WEIGHTS['xwOBA'] * (xwoba_factor - 1)  # Convert to modifier
+                WEIGHTS['xwOBA'] * (xwoba_factor - 1) +  # Convert to modifier
+                WEIGHTS['slg_factor'] * (slg_factor - 1) +
+                WEIGHTS['iso_factor'] * (iso_factor - 1) +
+                WEIGHTS['l15_barrel_factor'] * (l15_barrel_factor - 1) +
+                WEIGHTS['l15_ev_factor'] * (l15_ev_factor - 1) +
+                WEIGHTS['barrel_rate_factor'] * (barrel_rate_factor - 1) +  # Added barrel rate factor
+                WEIGHTS['exit_velo_factor'] * (exit_velo_factor - 1) +  # Added exit velo factor
+                WEIGHTS['hr_pct_factor'] * (hr_pct_factor - 1) +
+                WEIGHTS['hard_hit_distance'] * (hard_hit_distance_factor - 1) +
+                WEIGHTS['pitch_specific'] * (pitch_specific_factor - 1) +
+                WEIGHTS['spray_angle'] * (spray_angle_factor - 1) +
+                WEIGHTS['zone_contact'] * (zone_contact_factor - 1) +
+                WEIGHTS['park_specific'] * (park_specific_factor - 1)
             )
-            
-            # Apply base rate (league average HR rate is ~3%)
-            base_hr_rate = 0.03
-            final_hr_prob = base_hr_rate * (1 + hr_prob)
-            
-            # Cap probability within reasonable limits
-            final_hr_prob = max(0.01, min(0.25, final_hr_prob))
-            
-            # Add prediction
-            hr_predictions.append({
-                'player': batter,
-                'team': team,
-                'team_name': game['home_team_name'] if is_home_team else game['away_team_name'],
-                'opponent': opponent_team,
-                'opponent_name': game['away_team_name'] if is_home_team else game['home_team_name'],
-                'opponent_pitcher': opponent_pitcher,
-                'ballpark': game['ballpark'],
-                'ballpark_factor': ballpark_factor,
-                'weather_temp': self.weather_data.get(game_id, {}).get('temp', 0),
-                'weather_wind': self.weather_data.get(game_id, {}).get('wind_speed', 0),
-                'weather_factor': weather_factor,
-                'platoon_advantage': platoon_factor > 1,
-                'bats': self.player_stats.get(batter, {}).get('bats', '?'),
-                'throws': self.pitcher_stats.get(opponent_pitcher, {}).get('throws', '?'),
-                'recent_hr_rate': recent_hr_rate,
-                'season_hr_rate': season_hr_rate,
-                'pitcher_hr_rate': pitcher_hr_rate,
-                'barrel_pct': barrel_pct,
-                'exit_velo': self.player_stats.get(batter, {}).get('exit_velo', 0),
-                'launch_angle': launch_angle,
-                'pull_pct': pull_pct,
-                'hard_hit_pct': hard_hit_pct,
-                'pitcher_gb_fb': pitcher_gb_fb,
-                'hr_fb_ratio': hr_fb_ratio,
-                'pitch_type_matchup': pitch_type_matchup,
-                'pitcher_workload': pitcher_workload,
-                'batter_vs_pitcher': batter_vs_pitcher,
-                'home_away_factor': home_away_factor,
-                'streak_factor': streak_factor,
-                'xISO': xiso,
-                'xwOBA': xwoba,
-                'hr_probability': final_hr_prob,
-                'game_id': game_id,
-                'game_time': game['game_time'],
-                'is_home_team': is_home_team
-            })
+        
+        # Apply base rate (league average HR rate is ~3%)
+        base_hr_rate = 0.03
+        final_hr_prob = base_hr_rate * (1 + hr_prob)
+        
+        # Cap probability within reasonable limits
+        final_hr_prob = max(0.01, min(0.25, final_hr_prob))
+        
+        # Add prediction
+        hr_predictions.append({
+            'player': batter,
+            'team': team,
+            'team_name': game['home_team_name'] if is_home_team else game['away_team_name'],
+            'opponent': opponent_team,
+            'opponent_name': game['away_team_name'] if is_home_team else game['home_team_name'],
+            'opponent_pitcher': opponent_pitcher,
+            'ballpark': game['ballpark'],
+            'ballpark_factor': ballpark_factor,
+            'weather_temp': self.weather_data.get(game_id, {}).get('temp', 0),
+            'weather_wind': self.weather_data.get(game_id, {}).get('wind_speed', 0),
+            'weather_factor': weather_factor,
+            'platoon_advantage': platoon_factor > 1,
+            'bats': self.player_stats.get(batter, {}).get('bats', '?'),
+            'throws': self.pitcher_stats.get(opponent_pitcher, {}).get('throws', '?'),
+            'recent_hr_rate': recent_hr_rate,
+            'season_hr_rate': season_hr_rate,
+            'pitcher_hr_rate': pitcher_hr_rate,
+            'barrel_pct': barrel_pct,
+            'exit_velo': exit_velo,  # Use raw exit velo for output
+            'launch_angle': launch_angle,
+            'pull_pct': pull_pct,
+            'hard_hit_pct': hard_hit_pct,
+            'pitcher_gb_fb': pitcher_gb_fb,
+            'hr_fb_ratio': hr_fb_ratio,
+            'pitch_type_matchup': pitch_type_matchup,
+            'pitcher_workload': pitcher_workload,
+            'batter_vs_pitcher': batter_vs_pitcher,
+            'home_away_factor': home_away_factor,
+            'streak_factor': streak_factor,
+            'xISO': xiso,
+            'xwOBA': xwoba,
+            'slg': slg,
+            'iso': iso,
+            'l15_barrel_pct': l15_barrel,
+            'l15_exit_velo': l15_ev,
+            'hr_pct': hr_pct,  # Using season_hr_rate
+            'hard_hit_distance': hard_hit_distance,
+            'hard_hit_distance_factor': hard_hit_distance_factor,
+            'primary_pitch': primary_pitch,
+            'pitch_specific_factor': pitch_specific_factor,
+            'spray_angle_factor': spray_angle_factor,
+            'zone_contact_factor': zone_contact_factor,
+            'park_specific_factor': park_specific_factor,
+            'hr_probability': final_hr_prob,
+            'game_id': game_id,
+            'game_time': game['game_time'],
+            'is_home_team': is_home_team
+        })
         
     def categorize_predictions(self, predictions_df, top_n=10):
         """Categorize HR predictions into tiers"""
@@ -1040,18 +1352,23 @@ class MLBHomeRunPredictor:
                 logger.warning(f"High percentage of unknown batter handedness: {handedness_stats['unknown_batter_pct']:.1%}")
             if handedness_stats['unknown_pitcher_pct'] > 0.3:
                 logger.warning(f"High percentage of unknown pitcher handedness: {handedness_stats['unknown_pitcher_pct']:.1%}")
-            
-            # Step 5: Predict HR probabilities
+
+
+            # Step 5: Integrate Baseball Savant data (just one line!)
+            self.integrate_savant_data()
+
+
+            # Step 6: Predict HR probabilities
             predictions_df = self.predict_home_runs()
             
             if predictions_df.empty:
                 logger.error("No predictions generated, exiting")
                 return False
                 
-            # Step 6: Categorize predictions
+            # Step 7: Categorize predictions
             categories = self.categorize_predictions(predictions_df)
             
-            # Step 7: Format and send Telegram message
+            # Step 8: Format and send Telegram message
             message = self.format_telegram_message(categories)
             self.send_telegram_message(message)
             

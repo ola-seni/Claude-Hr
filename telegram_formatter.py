@@ -59,6 +59,21 @@ def format_telegram_message(categories, today, early_run=False):
         # Strengths section
         entry += f"   💪 STRENGTHS:\n"
         
+        if player.get('iso', 0) > 0.250:
+            entry += f"   • ISO: {player.get('iso', 0):.3f} ({'ELITE' if player.get('iso', 0) > 0.300 else 'STRONG'}) 💪\n"
+
+        if player.get('slg', 0) > 0.500:
+            entry += f"   • SLG: {player.get('slg', 0):.3f} ({'ELITE' if player.get('slg', 0) > 0.550 else 'STRONG'}) 🚀\n"
+
+        if player.get('l15_barrel_pct', 0) > 0.25:
+            entry += f"   • L15 Barrel%: {player.get('l15_barrel_pct', 0):.3f} (ELITE) 🎯\n"
+
+        if player.get('l15_exit_velo', 0) > 95:
+            entry += f"   • L15 Exit Velo: {player.get('l15_exit_velo', 0):.1f} mph (ELITE) 💥\n"
+
+        if player.get('hr_pct', 0) > 0.10:
+            entry += f"   • HR%: {player.get('hr_pct', 0)*100:.1f}% (ELITE) ⚾\n"
+        
         # Power metrics
         iso_rating = "Elite" if player.get('xISO', 0) > 0.200 else "Strong" if player.get('xISO', 0) > 0.150 else "Average"
         barrel_rating = "Elite" if player.get('barrel_pct', 0) > 0.08 else "Strong" if player.get('barrel_pct', 0) > 0.05 else "Average"

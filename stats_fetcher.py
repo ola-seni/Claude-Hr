@@ -246,7 +246,9 @@ def fetch_player_stats(player_names, generate_simulated_stats=False):
                     'ab': ab,
                     'pa': pa,
                     'hr_per_game': hr_per_game,
-                    'hr_per_pa': hr_per_pa,
+                    'hr_per_pa': hr_per_pa,  # This is already HR%
+                    'slg': slg,  # Add SLG explicitly
+                    'iso': slg - avg,  # Add ISO explicitly 
                     'pull_pct': pull_pct,
                     'fb_pct': fb_pct,
                     'hard_pct': hard_pct,
@@ -265,7 +267,29 @@ def fetch_player_stats(player_names, generate_simulated_stats=False):
                     'streak_duration': 0,
                     'batter_history': {},
                     'xwOBA': (obp * 1.8 + slg) / 3,  # Estimated xwOBA based on OBP and SLG
-                    'xISO': slg - avg  # ISO = SLG - AVG
+                    'xISO': slg - avg,  # ISO = SLG - AVG
+                    # New metrics
+                    'hard_hit_distance': calculate_hard_hit_distance(85 + (hard_pct * 10), 10 + (fb_pct * 20), hard_pct),
+                    'pitch_specific': {
+                        'fastball_hr_rate': hr_per_pa * np.random.uniform(0.8, 1.2),
+                        'breaking_hr_rate': hr_per_pa * np.random.uniform(0.6, 1.0),
+                        'offspeed_hr_rate': hr_per_pa * np.random.uniform(0.7, 1.1)
+                    },
+                    'spray_angle': {
+                        'pull_pct': pull_pct,  # Already have this
+                        'center_pct': np.random.uniform(0.25, 0.40),
+                        'oppo_pct': 1.0 - pull_pct - np.random.uniform(0.25, 0.40),
+                        'pull_slg': min(0.800, slg * 1.2),
+                        'center_slg': slg,
+                        'oppo_slg': slg * (0.7 if pull_pct > 0.45 else 0.9)
+                    },
+                    'zone_contact': {
+                        'up_barrel_pct': (hard_pct * fb_pct * 0.5) * (1.2 if (10 + (fb_pct * 20)) > 15 else 0.8),
+                        'down_barrel_pct': (hard_pct * fb_pct * 0.5) * (0.8 if (10 + (fb_pct * 20)) > 15 else 1.2),
+                        'in_barrel_pct': (hard_pct * fb_pct * 0.5) * (1.1 if pull_pct > 0.42 else 0.9),
+                        'out_barrel_pct': (hard_pct * fb_pct * 0.5) * (0.9 if pull_pct > 0.42 else 1.1)
+                    },
+                    'park_hr_factors': {}  # Will be populated based on ballpark factors
                 }
                 
                 # For recent stats, use a slightly modified version of season stats
@@ -857,3 +881,33 @@ def show_handedness_data_stats():
     
     logger.info(f"Batter handedness distribution: {bats_values}")
     logger.info(f"Pitcher handedness distribution: {throws_values}")
+
+def calculate_hard_hit_distance(exit_velo, launch_angle, hard_pct):
+    """Calculate estimated average distance for hard hit balls (95+ mph exit velo)"""
+    # Base distance for 95 mph exit velo at optimal launch angle
+    base_distance = 350
+    
+    # Adjust for higher exit velocities
+    velo_factor = (exit_velo - 95) * 2 if exit_velo > 95 else 0
+    
+    # Adjust for launch angle (optimal ~25-30 degrees)
+    if 25 <= launch_angle <= 30:
+        angle_factor = 20  # Optimal
+    elif 20 <= launch_angle < 25 or 30 < launch_angle <= 35:
+        angle_factor = 10  # Very good
+    elif 15 <= launch_angle < 20 or 35 < launch_angle <= 40:
+        angle_factor = 0   # Good
+    elif 10 <= launch_angle < 15 or 40 < launch_angle <= 45:
+        angle_factor = -10  # Suboptimal
+    else:
+        angle_factor = -20  # Poor for distance
+    
+    # Hard hit percentage factor - players who hit the ball hard more often
+    # tend to have better distance on their hard hit balls
+    hard_factor = (hard_pct - 0.3) * 50 if hard_pct > 0.3 else 0
+    
+    # Calculate distance with adjustments
+    distance = base_distance + velo_factor + angle_factor + hard_factor
+    
+    # Cap within reasonable limits
+    return max(320, min(450, distance))
