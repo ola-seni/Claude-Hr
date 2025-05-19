@@ -1,6 +1,7 @@
 import logging
 import requests
 import datetime
+import time
 
 # Configure logging (or import your logging config)
 logger = logging.getLogger('MLB-HR-Predictor')
@@ -143,23 +144,117 @@ def format_telegram_message(categories, today, early_run=False):
     
     return message
 
+# Add to telegram_formatter.py
+
 def send_telegram_message(message, bot_token, chat_id):
-    """Send message via Telegram bot."""
+    """Send message via Telegram bot with support for long messages."""
     try:
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        data = {
-            "chat_id": chat_id,
-            "text": message,
-            # No parse_mode to avoid formatting issues
-        }
-        response = requests.post(url, json=data)
+        # Telegram has a 4096 character limit
+        MAX_LENGTH = 4000  # Slightly less than 4096 for safety
         
-        if response.status_code == 200:
-            logger.info("Telegram message sent successfully!")
+        # If message is shorter than limit, send as one message
+        if len(message) <= MAX_LENGTH:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            data = {
+                "chat_id": chat_id,
+                "text": message
+            }
+            response = requests.post(url, json=data)
+            
+            if response.status_code == 200:
+                logger.info("Telegram message sent successfully!")
+                return True
+            else:
+                logger.error(f"Error sending Telegram message: Status {response.status_code}")
+                return False
+        
+        # Split long message into chunks and send as multiple messages
+        chunks = []
+        current_chunk = ""
+        
+        # Split by sections to avoid breaking up a player's info
+        sections = []
+        
+        # First check if the message has natural section breaks
+        if '🔒 ABSOLUTE LOCKS 🔒' in message:
+            # Split by major headers
+            headers = ['⚾️💥 MLB HOME RUN PREDICTIONS', 
+                      '🔒 ABSOLUTE LOCKS 🔒', 
+                      '🔥 HOT PICKS 🔥', 
+                      '💤 VALUE SLEEPERS 💤']
+            
+            # Get section between each header
+            last_pos = 0
+            for i in range(len(headers)):
+                if i < len(headers) - 1:
+                    # Find this header and the next
+                    start = message.find(headers[i], last_pos)
+                    end = message.find(headers[i+1], start)
+                    
+                    if start != -1 and end != -1:
+                        sections.append(message[start:end])
+                        last_pos = end
+                else:
+                    # Last section goes to the end
+                    start = message.find(headers[i], last_pos)
+                    if start != -1:
+                        sections.append(message[start:])
+        else:
+            # No clear sections, just use the whole message
+            sections = [message]
+        
+        # Now process each section, potentially splitting further if needed
+        for section in sections:
+            if len(section) <= MAX_LENGTH:
+                chunks.append(section)
+            else:
+                # Very long section - split by players
+                players = section.split("\n\n")
+                current_chunk = ""
+                
+                for player in players:
+                    # If adding this player would exceed limit, start a new chunk
+                    if len(current_chunk) + len(player) + 2 > MAX_LENGTH:
+                        if current_chunk:
+                            chunks.append(current_chunk)
+                        current_chunk = player
+                    else:
+                        if current_chunk:
+                            current_chunk += "\n\n" + player
+                        else:
+                            current_chunk = player
+                
+                # Add the last chunk if not empty
+                if current_chunk:
+                    chunks.append(current_chunk)
+        
+        # Send each chunk as a separate message
+        success = True
+        for i, chunk in enumerate(chunks):
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            prefix = f"(Part {i+1}/{len(chunks)}) " if len(chunks) > 1 else ""
+            
+            data = {
+                "chat_id": chat_id,
+                "text": prefix + chunk.strip()
+            }
+            response = requests.post(url, json=data)
+            
+            if response.status_code != 200:
+                logger.error(f"Error sending Telegram part {i+1}: Status {response.status_code}")
+                success = False
+            
+            # Add a small delay between messages to avoid rate limiting
+            if i < len(chunks) - 1:
+                time.sleep(1)
+        
+        if success:
+            logger.info(f"Telegram message sent successfully in {len(chunks)} parts!")
             return True
         else:
-            logger.error(f"Error sending Telegram message: Status {response.status_code}")
+            logger.error("Error sending some Telegram message parts")
             return False
+            
     except Exception as e:
         logger.error(f"Exception sending Telegram message: {e}")
         return False
