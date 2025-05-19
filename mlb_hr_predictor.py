@@ -27,9 +27,9 @@ logging.basicConfig(
 logger = logging.getLogger('MLB-HR-Predictor')
 
 # Constants
-OPENWEATHER_API = "2b7cfd728d429c2877bb971e1d2d81fd"
-BOT_TOKEN = "8192445369:AAHmn6oHdWOaPtD9KJGfgGsP9iGZaraQu4o"
-CHAT_ID = 248150489
+OPENWEATHER_API = os.environ.get("OPENWEATHER_API_KEY", "2b7cfd728d429c2877bb971e1d2d81fd")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8192445369:AAHmn6oHdWOaPtD9KJGfgGsP9iGZaraQu4o")
+CHAT_ID = int(os.environ.get("TELEGRAM_CHAT_ID", "248150489"))
 
 # Ballpark data with HR factors and orientation
 BALLPARKS = {
