@@ -10,9 +10,9 @@ def format_telegram_message(categories, today, early_run=False):
     """Format prediction results in a stylish, analytics-focused format."""
     date_obj = datetime.datetime.strptime(today, "%Y-%m-%d")
     formatted_date = date_obj.strftime("%Y-%m-%d")
-    time_label = "☀️ EARLY MORNING (PROBABLE PITCHERS)" if early_run else "🔥 MIDDAY (CONFIRMED LINEUPS) 🔥"
+   
+    message = f"⚾️💥 MLB HOME RUN PREDICTIONS - {formatted_date} 💥⚾️\n\n"
     
-    message = f"⚾️💥 MLB HOME RUN PREDICTIONS - {formatted_date} {time_label} 💥⚾️\n\n"
     
     # Add analytics intro
     message += f"📊 Today's Top Home Run Picks 📊\n"

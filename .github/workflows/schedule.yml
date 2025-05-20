@@ -1,13 +1,11 @@
 name: MLB HR Predictor Schedule
-
 on:
-  schedule:
-    # Early morning run with probable pitchers
-    - cron: '0 6 * * *'  # 6:00 AM daily
-    # Lineup check runs throughout the day
-    - cron: '0 10,13,16,19 * * *'  # 10AM, 1PM, 4PM, 7PM daily
+  # schedule:
+  #   # Early morning run with probable pitchers
+  #   - cron: '0 6 * * *'  # 6:00 AM daily
+  #   # Lineup check runs throughout the day
+  #   - cron: '0 10,13,16,19 * * *'  # 10AM, 1PM, 4PM, 7PM daily
   workflow_dispatch:  # Manual trigger option
-
 jobs:
   # Your existing job
   run-predictor:
@@ -40,11 +38,11 @@ jobs:
           git diff --quiet && git diff --staged --quiet || git commit -m "Update game and prediction tracking data"
           git push
 
-  # New job for verification (runs once per day at 9:00 AM)
+  # New job for verification (will only run on manual triggers now)
   verify-predictions:
     runs-on: ubuntu-latest
-    # Run at 9:00 AM to ensure all yesterday's games are complete
-    if: github.event.schedule == '0 9 * * *'  
+    # Comment out the condition since schedule is disabled
+    # if: github.event.schedule == '0 9 * * *'  
     steps:
       - uses: actions/checkout@v3
       
