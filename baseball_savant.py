@@ -11,7 +11,7 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from pybaseball import statcast, playerid_lookup
+from pybaseball import statcast, playerid_lookup, statcast_batter
 
 # Configure logging
 logger = logging.getLogger('Baseball-Savant')
@@ -719,3 +719,171 @@ def get_ballpark_data(batter_name, season=None):
     """Get ballpark-specific data for a batter"""
     savant = BaseballSavant()
     return savant.get_ballpark_analysis(batter_name, season)
+
+def _match_player_data(self, player_list, savant_data):
+    """Match players from our list to Savant data using improved name matching"""
+    result = {}
+    
+    for player_name in player_list:
+        # Try advanced matching algorithm
+        matched_name = self._advanced_name_matching(player_name, list(savant_data.keys()))
+        
+        if matched_name:
+            result[player_name] = savant_data[matched_name]
+    
+    return result
+
+def get_batter_recent_form(self, player_name, days=10):
+    """
+    Get a batter's recent performance metrics over specified days
+    
+    Parameters:
+    -----------
+    player_name : str
+        The name of the batter
+    days : int
+        Number of days to look back
+        
+    Returns:
+    --------
+    dict
+        Recent form metrics including rolling averages
+    """
+    end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=days+1)).strftime("%Y-%m-%d")
+    
+    cache_key = f"{player_name}_{start_date}_{end_date}_form"
+    cache_file = os.path.join(self.cache_dir, f'{cache_key}.json')
+    
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    
+    try:
+        # Get player ID first
+        player_search = playerid_lookup(player_name.split()[-1], player_name.split()[0])
+        if player_search.empty:
+            return {}
+            
+        player_id = int(player_search.iloc[0]['key_mlbam'])
+        
+        # Fetch recent data
+        data = statcast_batter(start_date, end_date, player_id)
+        
+        if data is None or len(data) == 0:
+            return {}
+        
+        # Calculate rolling metrics
+        batted_balls = data.dropna(subset=['launch_speed', 'launch_angle'])
+        
+        if len(batted_balls) < 3:
+            return {}
+        
+        # Group by game date
+        daily_stats = []
+        for date in batted_balls['game_date'].unique():
+            day_data = batted_balls[batted_balls['game_date'] == date]
+            
+            daily_stats.append({
+                'date': date,
+                'avg_ev': safe_float(day_data['launch_speed'].mean()),
+                'max_ev': safe_float(day_data['launch_speed'].max()),
+                'barrel_pct': safe_float(sum(day_data['barrel'] == 1) / len(day_data)) if 'barrel' in day_data.columns else 0,
+                'hard_hit_pct': safe_float(sum(day_data['launch_speed'] >= 95) / len(day_data)),
+                'batted_balls': len(day_data)
+            })
+        
+        # Calculate trend
+        if len(daily_stats) >= 3:
+            recent_avg_ev = np.mean([d['avg_ev'] for d in daily_stats[-3:]])
+            older_avg_ev = np.mean([d['avg_ev'] for d in daily_stats[:-3]]) if len(daily_stats) > 3 else recent_avg_ev
+            
+            trend = 'improving' if recent_avg_ev > older_avg_ev + 1 else 'declining' if recent_avg_ev < older_avg_ev - 1 else 'stable'
+        else:
+            trend = 'insufficient_data'
+        
+        result = {
+            'daily_stats': daily_stats,
+            'trend': trend,
+            'avg_ev_last_3': safe_float(np.mean([d['avg_ev'] for d in daily_stats[-3:]])) if len(daily_stats) >= 3 else 0,
+            'max_ev_period': safe_float(max([d['max_ev'] for d in daily_stats])) if daily_stats else 0,
+            'games_played': len(daily_stats)
+        }
+        
+        # Cache the result
+        try:
+            with open(cache_file, 'w') as f:
+                json.dump(result, f)
+        except:
+            pass
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error getting recent form for {player_name}: {e}")
+        return {}
+
+def fetch_seasonal_data(self, season=None):
+    """
+    Fetch data for an entire season for better statistical significance
+    
+    Parameters:
+    -----------
+    season : int, optional
+        The season year (e.g., 2023). Defaults to current year.
+    """
+    if not season:
+        season = datetime.now().year
+    
+    # Check if we have cached seasonal data
+    cache_file = os.path.join(self.cache_dir, f'season_{season}_data.json')
+    
+    if os.path.exists(cache_file):
+        logger.info(f"Loading cached seasonal data for {season}")
+        try:
+            with open(cache_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading cached seasonal data: {e}")
+
+
+def improve_savant_name_matching():
+    """
+    Add this improved version of _process_batter_data to your BaseballSavant class.
+    It handles name formatting differences between MLB API and Statcast.
+    """
+    
+    # In _process_batter_data, replace the line:
+    # player_name = batter_data['player_name'].iloc[0]
+    
+    # With this improved version:
+    player_name_raw = batter_data['player_name'].iloc[0]
+    
+    # Statcast often uses "Last, First" format, but MLB API uses "First Last"
+    # Also handle special characters and suffixes
+    if ',' in player_name_raw:
+        # Convert "Last, First" to "First Last"
+        parts = player_name_raw.split(',')
+        player_name = f"{parts[1].strip()} {parts[0].strip()}"
+    else:
+        player_name = player_name_raw
+    
+    # Remove common suffixes that might not match
+    for suffix in [' Jr.', ' Jr', ' Sr.', ' Sr', ' III', ' II', ' IV']:
+        player_name = player_name.replace(suffix, '')
+    
+    # Store both versions in the results
+    batters[player_name] = { ... }  # existing code
+    
+    # Also store the original format
+    if player_name != player_name_raw:
+        batters[player_name_raw] = batters[player_name]
+    
+    # Store just last name as well for partial matching
+    last_name = player_name.split()[-1]
+    if last_name not in batters:
+        batters[last_name] = batters[player_name]
+

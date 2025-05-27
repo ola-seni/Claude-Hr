@@ -90,6 +90,14 @@ def format_telegram_message(categories, today, early_run=False):
         if player.get('hot_cold_streak', 1.0) > 1.1:
             entry += f"   • Recent Form: HOT 🔥\n"
         
+        # NEW: Add batted ball trend info
+        form_trend = player.get('form_trend', 'unknown')
+        if form_trend != 'unknown':
+            trend_emoji = {'improving': '📈', 'declining': '📉', 'stable': '➖'}.get(form_trend, '')
+            avg_ev_last_3 = player.get('avg_ev_last_3', 0)
+            if avg_ev_last_3 > 0:
+                entry += f"   • Batted Ball Trend: {form_trend.upper()} {trend_emoji} (L3 EV: {avg_ev_last_3:.1f} mph)\n"
+        
         # Matchup edges section
         entry += f"\n   ⚔️ MATCHUP EDGES:\n"
         

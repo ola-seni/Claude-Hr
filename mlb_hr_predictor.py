@@ -1,4 +1,5 @@
 import os
+import json
 import pandas as pd
 import numpy as np
 import datetime
@@ -15,7 +16,7 @@ from lineup_fetcher import fetch_lineups_and_pitchers
 from stats_fetcher import fetch_player_stats, fetch_pitcher_stats, get_player_names_from_lineups, get_pitcher_names_from_probable_pitchers
 from telegram_formatter import format_telegram_message, send_telegram_message
 from prediction_tracker import PredictionTracker
-from baseball_savant import get_savant_data, get_seasonal_data, get_ballpark_data
+from baseball_savant import get_savant_data, get_seasonal_data, get_ballpark_data, BaseballSavant
 
 warnings.filterwarnings('ignore')
 
@@ -127,7 +128,10 @@ WEIGHTS = {
     'pitch_specific': 0.04,            # Pitch-specific performance
     'spray_angle': 0.04,               # Spray angle/pull vs oppo power
     'zone_contact': 0.04,              # Zone location contact quality
-    'park_specific': 0.04              # Park-specific performance
+    'park_specific': 0.04,             # Park-specific performance
+    
+    # NEW: Form trend factor
+    'form_trend': 0.05                 # Recent batted ball trend
 }
 
 class MLBHomeRunPredictor:
@@ -440,18 +444,66 @@ class MLBHomeRunPredictor:
                     
             # Right-handed batters have advantage against left-handed pitchers
             if batter_hand == 'R' and pitcher_hand == 'L':
-                return 1.10  # 10% advantage
+                # NEW: Enhanced platoon advantage based on player's actual splits
+                # Check if player has strong platoon splits
+                vs_lhp_factor = self.player_stats.get(batter, {}).get('vs_breaking', 1.0)
+                if vs_lhp_factor > 1.1:  # Player crushes lefties
+                    return 1.25  # 25% advantage for strong platoon hitters
+                else:
+                    return 1.10  # Standard 10% advantage
                     
             # Left-handed batters have advantage against right-handed pitchers
             if batter_hand == 'L' and pitcher_hand == 'R':
-                return 1.12  # 12% advantage
+                # NEW: Enhanced platoon advantage
+                vs_rhp_factor = self.player_stats.get(batter, {}).get('vs_fastball', 1.0)
+                if vs_rhp_factor > 1.1:  # Player crushes righties
+                    return 1.28  # 28% advantage for strong platoon hitters
+                else:
+                    return 1.12  # Standard 12% advantage
                     
             # Same-handed matchup (slight disadvantage)
-            return 0.95  # 5% disadvantage
+            # NEW: More nuanced same-handed penalties
+            if batter_hand == pitcher_hand:
+                # Check if batter handles same-handed pitching well
+                if batter_hand == 'L':
+                    # Lefty vs Lefty - typically harder
+                    return 0.90  # 10% disadvantage
+                else:
+                    # Righty vs Righty - less severe
+                    return 0.95  # 5% disadvantage
                 
         except Exception as e:
             logger.error(f"Error calculating platoon advantage for {batter} vs {pitcher}: {e}")
             return 1.0  # Default neutral factor
+
+    def convert_names_for_statcast(self, names):
+        """Convert 'First Last' to 'Last, First' format for Statcast matching"""
+        converted_names = []
+        name_map = {}  # Maps converted names back to original
+        
+        # Convert set to list if needed
+        if isinstance(names, set):
+            names = list(names)
+        
+        for name in names:
+            if ' ' in name:
+                parts = name.split(' ')
+                if len(parts) == 2:
+                    # Simple case: "First Last" -> "Last, First"
+                    converted = f"{parts[1]}, {parts[0]}"
+                    converted_names.append(converted)
+                    name_map[converted] = name
+                elif len(parts) == 3 and parts[2] in ['Jr', 'Jr.', 'Sr', 'Sr.', 'II', 'III']:
+                    # Handle suffixes: "First Last Jr" -> "Last Jr., First"
+                    converted = f"{parts[1]} {parts[2]}, {parts[0]}"
+                    converted_names.append(converted)
+                    name_map[converted] = name
+            
+            # Also keep the original name just in case
+            converted_names.append(name)
+            name_map[name] = name
+        
+        return converted_names, name_map
 
     def integrate_savant_data(self):
         """Integrate Baseball Savant data into existing stats"""
@@ -461,16 +513,76 @@ class MLBHomeRunPredictor:
         player_names = get_player_names_from_lineups(self.lineups)
         pitcher_names = get_pitcher_names_from_probable_pitchers(self.probable_pitchers)
 
-        # Get recent data (last 15 days)
-        batter_savant, pitcher_savant = get_savant_data(player_names, pitcher_names)
+        # Convert names to Statcast format
+        converted_players, player_map = self.convert_names_for_statcast(player_names)
+        converted_pitchers, pitcher_map = self.convert_names_for_statcast(pitcher_names)
+        
+        print(f"DEBUG: Converting {len(player_names)} player names to Statcast format...")
+        
+        # Get recent data (last 15 days) with converted names
+        batter_savant, pitcher_savant = get_savant_data(converted_players, converted_pitchers)
+
+        # DEBUG: Let's see what names Statcast returned
+        logger.info(f"Statcast returned {len(batter_savant)} batters")
+        if batter_savant:
+            logger.info(f"First 5 Statcast batter names: {list(batter_savant.keys())[:5]}")
+        
         
         # Get seasonal data for more statistical significance
-        batter_season, pitcher_season = get_seasonal_data(player_names, pitcher_names)
+        batter_season, pitcher_season = get_seasonal_data(converted_players, converted_pitchers)
+        
+        # Map results back to original names
+        batter_savant_fixed = {}
+        for statcast_name, data in batter_savant.items():
+            if statcast_name in player_map:
+                original_name = player_map[statcast_name]
+                batter_savant_fixed[original_name] = data
+        batter_savant = batter_savant_fixed
+        
+        # DEBUG: Check what names we have
+        print("="*50)
+        print(f"MLB NAMES (first 3): {list(player_names)[:3]}")
+        print(f"STATCAST FOUND: {len(batter_savant)} recent, {len(batter_season)} seasonal")
+        if batter_savant:
+            print(f"MATCHED NAME: {list(batter_savant.keys())[0]}")
+        print("="*50)
+        
+        # DEBUG: Check the cache file
+        import json
+        try:
+            with open('savant_cache/savant_data_20250527.json', 'r') as f:
+                cache_data = json.load(f)
+                if 'batters' in cache_data:
+                    statcast_names = list(cache_data['batters'].keys())[:5]
+                    print("="*50)
+                    print(f"STATCAST NAME FORMAT: {statcast_names}")
+                    print("="*50)
+        except:
+            print("Could not read cache file")
+        
+        # NEW: Get recent form data for trend analysis
+        savant = BaseballSavant()
         
         # Integrate data (prioritize recent data, fall back to seasonal)
         for player_name in self.player_stats:
             # Get recent data if available, otherwise use seasonal
             savant_data = batter_savant.get(player_name, batter_season.get(player_name, {}))
+            
+            # NEW: Get recent form trend
+            #recent_form = savant.get_batter_recent_form(player_name, days=10)
+            #
+            #if recent_form and recent_form.get('trend'):
+            #    # Add form trend to player stats
+            #    self.player_stats[player_name]['form_trend'] = recent_form['trend']
+            #    self.player_stats[player_name]['avg_ev_last_3'] = recent_form.get('avg_ev_last_3', 0)
+            #   
+            #    # Adjust hot/cold streak based on actual trend data
+            #    if recent_form['trend'] == 'improving':
+            #        current_streak = self.player_stats[player_name].get('hot_cold_streak', 1.0)
+            #        self.player_stats[player_name]['hot_cold_streak'] = max(current_streak, 1.15)
+            #    elif recent_form['trend'] == 'declining':
+            #        current_streak = self.player_stats[player_name].get('hot_cold_streak', 1.0)
+            #        self.player_stats[player_name]['hot_cold_streak'] = min(current_streak, 0.85)
             
             if savant_data:
                 # Update spray angle data
@@ -602,6 +714,14 @@ class MLBHomeRunPredictor:
             temp = weather.get('temp', 72)
             temp_factor = 1.0 + (temp - 70) * 0.01 if temp > 70 else 1.0 - (70 - temp) * 0.005
             
+            # NEW: Enhanced temperature analysis for extreme conditions
+            if temp > 90:
+                # Hot weather bonus - ball carries better
+                temp_factor *= 1.08
+            elif temp < 50:
+                # Cold weather penalty - ball doesn't carry as well
+                temp_factor *= 0.92
+            
             # Wind factor
             wind_speed = weather.get('wind_speed', 0)
             wind_deg = weather.get('wind_deg', 0)
@@ -623,10 +743,16 @@ class MLBHomeRunPredictor:
                 if wind_angle_diff < 45:
                     # Tailwind - increases HR probability
                     wind_factor = 1.0 + (wind_speed * 0.02)  # 2% increase per mph
+                    # NEW: Strong wind bonus
+                    if wind_speed > 15:
+                        wind_factor *= 1.15  # Extra 15% for strong tailwinds
                 # If wind is blowing in (within 45 degrees of opposite direction)
                 elif wind_angle_diff > 135:
                     # Headwind - decreases HR probability
                     wind_factor = 1.0 - (wind_speed * 0.02)  # 2% decrease per mph
+                    # NEW: Strong wind penalty
+                    if wind_speed > 15:
+                        wind_factor *= 0.85  # Extra 15% penalty for strong headwinds
                 # If wind is crosswind
                 else:
                     # Crosswind - minimal effect
@@ -643,11 +769,36 @@ class MLBHomeRunPredictor:
             humidity = weather.get('humidity', 50)
             humidity_factor = 1.0 - (humidity - 50) * 0.001 if humidity > 50 else 1.0 + (50 - humidity) * 0.001
             
+            # NEW: Extreme humidity adjustments
+            if humidity > 80:
+                # Very humid - ball doesn't carry as well
+                humidity_factor *= 0.95
+            elif humidity < 30:
+                # Very dry - ball carries better
+                humidity_factor *= 1.05
+            
+            # NEW: Barometric pressure simulation (affects ball flight)
+            # Lower pressure = ball carries better (like at Coors Field)
+            # Simulate based on temperature and humidity
+            pressure_factor = 1.0
+            if temp > 80 and humidity < 40:
+                # Hot and dry = lower pressure effect
+                pressure_factor = 1.06
+            elif temp < 60 and humidity > 70:
+                # Cool and humid = higher pressure effect
+                pressure_factor = 0.96
+            
             # Combine factors
-            weather_factor = temp_factor * wind_factor * humidity_factor
+            weather_factor = temp_factor * wind_factor * humidity_factor * pressure_factor
             
             # Cap within reasonable limits
             weather_factor = max(0.7, min(1.5, weather_factor))
+            
+            # NEW: Log extreme weather for debugging
+            if weather_factor > 1.3:
+                logger.info(f"Extreme favorable weather for {player_name}: factor={weather_factor:.2f}, temp={temp}, wind={wind_speed}mph")
+            elif weather_factor < 0.8:
+                logger.info(f"Extreme unfavorable weather for {player_name}: factor={weather_factor:.2f}, temp={temp}, wind={wind_speed}mph")
             
             return weather_factor
             
@@ -948,6 +1099,41 @@ class MLBHomeRunPredictor:
             pass
         
         return normalized.strip()
+
+    def calculate_form_trend_factor(self, batter):
+        """Calculate form trend factor based on recent batted ball data trends"""
+        try:
+            # Get form trend from player stats
+            form_trend = self.player_stats.get(batter, {}).get('form_trend', 'stable')
+            avg_ev_last_3 = self.player_stats.get(batter, {}).get('avg_ev_last_3', 0)
+            
+            # Base factor
+            trend_factor = 1.0
+            
+            # Adjust based on trend
+            if form_trend == 'improving':
+                trend_factor = 1.15
+                # Extra boost if exit velo is elite
+                if avg_ev_last_3 > 92:
+                    trend_factor = 1.20
+            elif form_trend == 'declining':
+                trend_factor = 0.85
+                # Extra penalty if exit velo is poor
+                if avg_ev_last_3 < 87:
+                    trend_factor = 0.80
+            elif form_trend == 'stable':
+                # Small adjustments based on quality
+                if avg_ev_last_3 > 90:
+                    trend_factor = 1.05
+                elif avg_ev_last_3 < 88:
+                    trend_factor = 0.95
+            
+            return trend_factor
+            
+        except Exception as e:
+            logger.error(f"Error calculating form trend factor for {batter}: {e}")
+            return 1.0
+    
 
     def analyze_handedness_data(self):
         """Analyze and log handedness data for debugging"""
@@ -1296,14 +1482,50 @@ class MLBHomeRunPredictor:
                 # Park-specific performance
                 park_specific_factor = 1.0  # Default
                 if game['home_team'] in BALLPARKS:
-                    # Use the ballpark factor as a base
-                    park_factor = BALLPARKS[game['home_team']].get('factor', 1.0)
+                    park_data = BALLPARKS[game['home_team']]
+                    park_factor = park_data.get('factor', 1.0)
                     
                     # If batter has above-average power metrics, amplify the park effect
                     if self.player_stats.get(batter, {}).get('xISO', 0) > 0.180:
                         park_specific_factor = 1.0 + (park_factor - 1.0) * 1.2
                     else:
                         park_specific_factor = 1.0 + (park_factor - 1.0) * 0.8
+                    
+                    # NEW: Special ballpark adjustments
+                    special = park_data.get('special', {})
+                    batter_hand = self.player_stats.get(batter, {}).get('bats', '?')
+                    
+                    # Coors Field altitude effect
+                    if special.get('altitude'):
+                        # Altitude affects all batters but especially fly ball hitters
+                        if fly_ball_rate > 0.40:
+                            park_specific_factor *= 1.15  # Extra boost for fly ball hitters
+                        else:
+                            park_specific_factor *= 1.08  # Still a boost for everyone
+                    
+                    # Yankee Stadium short porch (benefits pull hitters)
+                    elif special.get('short_porch'):
+                        if batter_hand == 'L' and pull_pct > 0.45:
+                            park_specific_factor *= 1.10  # Left-handed pull hitters love the short porch
+                    
+                    # Houston's Crawford Boxes
+                    elif special.get('crawford_boxes'):
+                        if batter_hand == 'R' and pull_pct > 0.45:
+                            park_specific_factor *= 1.08  # Right-handed pull hitters benefit
+                    
+                    # Cincinnati's bandbox dimensions
+                    elif special.get('bandbox'):
+                        if hard_hit_pct > 0.40:
+                            park_specific_factor *= 1.06  # Hard hitters get extra boost
+                    
+                    # Dome stadiums (no weather factor)
+                    elif special.get('dome') or special.get('retractable'):
+                        # Consistent conditions favor hitters with good mechanics
+                        if barrel_pct > 0.08:
+                            park_specific_factor *= 1.04
+                
+                # NEW: Form trend factor
+                form_trend_factor = self.calculate_form_trend_factor(batter)
                 
                 # Calculate weighted HR probability
                 hr_prob = (
@@ -1339,7 +1561,8 @@ class MLBHomeRunPredictor:
                     WEIGHTS['pitch_specific'] * (pitch_specific_factor - 1) +
                     WEIGHTS['spray_angle'] * (spray_angle_factor - 1) +
                     WEIGHTS['zone_contact'] * (zone_contact_factor - 1) +
-                    WEIGHTS['park_specific'] * (park_specific_factor - 1)
+                    WEIGHTS['park_specific'] * (park_specific_factor - 1) +
+                    WEIGHTS['form_trend'] * (form_trend_factor - 1)  # NEW: Add form trend
                 )
             
                 # Apply base rate (league average HR rate is ~3%)
@@ -1394,6 +1617,9 @@ class MLBHomeRunPredictor:
                     'spray_angle_factor': spray_angle_factor,
                     'zone_contact_factor': zone_contact_factor,
                     'park_specific_factor': park_specific_factor,
+                    'form_trend': self.player_stats.get(batter, {}).get('form_trend', 'unknown'),  # NEW
+                    'form_trend_factor': form_trend_factor,  # NEW
+                    'avg_ev_last_3': self.player_stats.get(batter, {}).get('avg_ev_last_3', 0),  # NEW
                     'hr_probability': final_hr_prob,
                     'game_id': game_id,
                     'game_time': game['game_time'],
