@@ -1198,11 +1198,28 @@ class MLBHomeRunPredictor:
             home_batters = self.lineups.get(game_id, {}).get('home', [])
             away_batters = self.lineups.get(game_id, {}).get('away', [])
             
-            # Validate lineup sizes
+            # NEW logic - don't skip if we have pitchers
             if len(home_batters) == 0 and len(away_batters) == 0:
-                logger.warning(f"Empty lineups for game {game_id}, skipping")
-                skipped_games += 1
-                continue
+                # Check if we have pitcher data
+                home_pitcher = self.probable_pitchers.get(game_id, {}).get('home', 'Unknown')
+                away_pitcher = self.probable_pitchers.get(game_id, {}).get('away', 'Unknown')
+                
+                if home_pitcher == 'Unknown' and away_pitcher == 'Unknown':
+                    logger.warning(f"No lineup or pitcher data for {game_id}, skipping")
+                    skipped_games += 1
+                    continue
+                else:
+                    logger.info(f"No lineups for {game_id} but have pitchers ({home_pitcher} vs {away_pitcher}) - creating minimal lineup")
+                    
+                    # Create minimal lineups so the game isn't skipped
+                    home_batters = [f"{home_team} Batter 1", f"{home_team} Batter 2", f"{home_team} Batter 3"]
+                    away_batters = [f"{away_team} Batter 1", f"{away_team} Batter 2", f"{away_team} Batter 3"]
+                    
+                    # Update the lineups dictionary so the rest of the code works
+                    self.lineups[game_id] = {
+                        'home': home_batters,
+                        'away': away_batters
+                    }
                 
             # Validate lineup sizes aren't suspiciously large (full rosters)
             if len(home_batters) > 15:
