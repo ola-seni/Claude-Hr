@@ -147,6 +147,7 @@ class MLBHomeRunPredictor:
         self.pitcher_stats = {}
         self.recent_player_stats = {}
         self.recent_pitcher_stats = {}
+        self.prediction_tracker = PredictionTracker()
         
         logger.info(f"Initializing HR predictor for {self.today} - {'Early' if self.early_run else 'Midday'} run")
         
@@ -249,20 +250,23 @@ class MLBHomeRunPredictor:
             try:
                 lat = game['ballpark_lat']
                 lon = game['ballpark_lon']
+                game_id = game['game_id']
                 
                 if lat == 0 or lon == 0:
                     logger.warning(f"No coordinates for {game['ballpark']}")
-                    self.weather_data[game['game_id']] = {
-                        'temp': 72,  # Default temperature
-                        'humidity': 50,  # Default humidity
-                        'wind_speed': 0,  # Default wind speed
-                        'wind_deg': 0  # Default wind direction
+                    # FIXED: Use deterministic defaults based on team
+                    team_hash = hash(game['home_team']) % 100
+                    self.weather_data[game_id] = {
+                        'temp': 70 + (team_hash % 20),  # 70-89°F based on team
+                        'humidity': 45 + (team_hash % 20),  # 45-64% based on team
+                        'wind_speed': (team_hash % 10),  # 0-9 mph based on team
+                        'wind_deg': (team_hash * 3.6) % 360  # Deterministic wind direction
                     }
                     continue
                     
                 # Check if ballpark is a dome (Tropicana Field, etc.)
                 if game['home_team'] == 'TB':  # Tropicana Field is a dome
-                    self.weather_data[game['game_id']] = {
+                    self.weather_data[game_id] = {
                         'temp': 72,  # Default dome temperature
                         'humidity': 50,  # Default dome humidity
                         'wind_speed': 0,  # No wind in dome
@@ -276,21 +280,22 @@ class MLBHomeRunPredictor:
                 data = response.json()
                 
                 if response.status_code == 200:
-                    self.weather_data[game['game_id']] = {
+                    self.weather_data[game_id] = {
                         'temp': data['main']['temp'],
                         'humidity': data['main']['humidity'],
                         'wind_speed': data['wind']['speed'],
                         'wind_deg': data['wind']['deg'] if 'deg' in data['wind'] else 0
                     }
-                    logger.info(f"Weather for {game['ballpark']}: {self.weather_data[game['game_id']]}")
+                    logger.info(f"Weather for {game['ballpark']}: {self.weather_data[game_id]}")
                 else:
                     logger.warning(f"Weather API error for {game['ballpark']}: {data.get('message', 'Unknown error')}")
-                    # Use default values
-                    self.weather_data[game['game_id']] = {
-                        'temp': 72,
-                        'humidity': 50,
-                        'wind_speed': 0,
-                        'wind_deg': 0
+                    # FIXED: Use deterministic defaults instead of random
+                    team_hash = hash(game['home_team']) % 100
+                    self.weather_data[game_id] = {
+                        'temp': 70 + (team_hash % 20),
+                        'humidity': 45 + (team_hash % 20), 
+                        'wind_speed': (team_hash % 10),
+                        'wind_deg': (team_hash * 3.6) % 360
                     }
                     
                 # Avoid rate limiting
@@ -298,12 +303,13 @@ class MLBHomeRunPredictor:
                 
             except Exception as e:
                 logger.error(f"Error fetching weather for {game['ballpark']}: {e}")
-                # Use default values
-                self.weather_data[game['game_id']] = {
-                    'temp': 72,
-                    'humidity': 50,
-                    'wind_speed': 0,
-                    'wind_deg': 0
+                # FIXED: Use deterministic defaults instead of random
+                team_hash = hash(game['home_team']) % 100
+                self.weather_data[game_id] = {
+                    'temp': 70 + (team_hash % 20),
+                    'humidity': 45 + (team_hash % 20),
+                    'wind_speed': (team_hash % 10),
+                    'wind_deg': (team_hash * 3.6) % 360
                 }
 
     def filter_games(self, game_ids):
@@ -807,36 +813,48 @@ class MLBHomeRunPredictor:
             return 1.0  # Default neutral factor
             
     def calculate_batter_vs_pitcher(self, batter, pitcher):
-        """Calculate batter vs pitcher historical matchup factor"""
+        """Calculate batter vs pitcher historical matchup factor - DETERMINISTIC VERSION"""
         try:
-            # In a real implementation, you would use MLB's API to get actual batter vs pitcher stats
-            # For this example, we'll simulate the matchup with random factors
-            
             # See if we already have this matchup calculated
             if pitcher in self.player_stats.get(batter, {}).get('batter_history', {}):
                 return self.player_stats[batter]['batter_history'][pitcher]
-                
-            # Simulate a history based on some PA threshold
-            pa_threshold = np.random.randint(0, 20)  # Random number of PA history
+            
+            # Create a deterministic "history" based on player names
+            # This gives consistent results but still varies by matchup
+            
+            # Generate a consistent seed from player names
+            batter_hash = hash(batter) % 1000
+            pitcher_hash = hash(pitcher) % 1000
+            combined_hash = (batter_hash + pitcher_hash) % 100
+            
+            # Determine PA threshold based on hash (0-19, deterministic)
+            pa_threshold = combined_hash % 20
             
             if pa_threshold < 3:
                 # No significant history
                 matchup_factor = 1.0
             else:
-                # Some history exists, generate a random factor
-                # The more PA, the more significant the factor can be
-                max_deviation = min(0.5, pa_threshold * 0.03)  # Max 50% deviation
-                matchup_factor = np.random.normal(1.0, max_deviation)
+                # Create a deterministic matchup factor
+                # Based on the combined hash, create a factor between 0.5 and 1.5
+                
+                # Use the hash to create a consistent deviation
+                hash_factor = (combined_hash % 100) / 100.0  # 0.0 to 1.0
+                
+                # Convert to range -0.5 to +0.5, then scale by max deviation
+                max_deviation = min(0.5, pa_threshold * 0.03)
+                deviation = (hash_factor - 0.5) * max_deviation * 2
+                
+                matchup_factor = 1.0 + deviation
                 
                 # Cap within reasonable limits
                 matchup_factor = max(0.5, min(1.5, matchup_factor))
-                
+            
             # Store for future use
             if batter in self.player_stats:
                 if 'batter_history' not in self.player_stats[batter]:
                     self.player_stats[batter]['batter_history'] = {}
                 self.player_stats[batter]['batter_history'][pitcher] = matchup_factor
-                
+            
             return matchup_factor
             
         except Exception as e:
@@ -1287,29 +1305,35 @@ class MLBHomeRunPredictor:
                 
         return predictions_df
 
-    def _process_team_batters(self, hr_predictions, batters, team, opponent_team, opponent_pitcher, game, game_id, ballpark_factor, is_home_team):
-        """Process batters for a team and calculate HR probabilities, returning count of processed batters"""
+    def _process_team_batters(self, hr_predictions, batters, team, opponent_team, 
+                             opponent_pitcher, game, game_id, ballpark_factor, is_home_team):
+        """Process batters with better validation"""
         processed_count = 0
         
         for batter in batters:
             try:
-                # Skip if player is empty or invalid
+                # Enhanced validation
                 if not batter or not isinstance(batter, str) or batter.strip() == "":
                     continue
-                    
-                # Skip if we don't have stats for this player
+                
+                # Skip generic placeholder names
+                if any(x in batter.lower() for x in ['player', 'batter', 'tbd', 'unknown']):
+                    logger.info(f"Skipping placeholder: {batter}")
+                    continue
+                
+                # Check if name looks valid (has at least first and last name)
+                if len(batter.split()) < 2:
+                    logger.info(f"Skipping invalid name format: {batter}")
+                    continue
+                
+                # Skip if no real stats
                 if batter not in self.player_stats:
-                    logger.info(f"No stats available for {batter}, skipping")
+                    logger.info(f"No stats for {batter}")
                     continue
-                    
-                # Skip if player has insufficient data
-                if self.player_stats[batter].get('games', 0) < 4:
-                    logger.info(f"Insufficient games played for {batter} (<4), skipping")
-                    continue
-                    
-                # Skip if simulated data
+                
+                # Check if stats are real or simulated
                 if self.player_stats[batter].get('is_simulated', False):
-                    logger.info(f"Skipping {batter} - using simulated data")
+                    logger.info(f"Skipping simulated stats for {batter}")
                     continue
                 
                 # Calculate HR probability components
@@ -1712,7 +1736,12 @@ class MLBHomeRunPredictor:
     def run(self):
         """Run the HR prediction pipeline"""
         try:
-             # Add this line to verify CSV files
+            # CRITICAL: Set random seed for full determinism
+            import random
+            np.random.seed(42)
+            random.seed(42)
+            
+            # Add this line to verify CSV files
             if not self.verify_csv_files():
                 logger.error("CSV verification failed - handedness data not loaded properly")
                 return False
@@ -1746,13 +1775,27 @@ class MLBHomeRunPredictor:
 
             # Step 6: Predict HR probabilities
             predictions_df = self.predict_home_runs()
+
+            if predictions_df.empty:
+                logger.error("No predictions generated, exiting")
+                return False
             
+
             if predictions_df.empty:
                 logger.error("No predictions generated, exiting")
                 return False
                 
             # Step 7: Categorize predictions
             categories = self.categorize_predictions(predictions_df)
+
+            # NEW STEP 7.5: Log predictions for tracking
+            logger.info("Logging predictions for accuracy tracking...")
+            tracking_success = self.prediction_tracker.log_predictions(self.today, categories)
+            if tracking_success:
+                logger.info("✅ Predictions logged successfully")
+            else:
+                logger.warning("⚠️ Failed to log predictions for tracking")
+
             
             # Step 8: Format and send Telegram message
             message = self.format_telegram_message(categories)
