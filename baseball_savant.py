@@ -65,7 +65,7 @@ class BaseballSavant:
         return batter_data, pitcher_data
     
     def _fetch_statcast_data(self):
-        """Fetch and process Baseball Savant data"""
+        """Fetch and process Baseball Savant data with enhanced error handling"""
         # Check for cached data first
         cache_file = os.path.join(self.cache_dir, f'savant_data_{datetime.now().strftime("%Y%m%d")}.json')
         
@@ -89,8 +89,8 @@ class BaseballSavant:
             data = statcast(start_dt=start_date, end_dt=end_date)
             
             if data is None or len(data) == 0:
-                logger.warning("No Statcast data found for the date range")
-                return {}
+                logger.warning("No Statcast data found for the date range - may be off-season")
+                return self._create_empty_savant_data()
                 
             logger.info(f"Retrieved {len(data)} Statcast events")
             
@@ -116,7 +116,16 @@ class BaseballSavant:
             
         except Exception as e:
             logger.error(f"Error fetching Statcast data: {e}")
-            return {}
+            logger.info("Falling back to empty Savant data")
+            return self._create_empty_savant_data()
+
+    
+    def _create_empty_savant_data(self):
+        """Create empty data structure when Savant fetch fails"""
+        return {
+            'batters': {},
+            'pitchers': {}
+        }
     
     def _process_batter_data(self, data):
         """Process Statcast data for batters"""

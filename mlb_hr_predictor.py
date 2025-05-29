@@ -483,7 +483,7 @@ class MLBHomeRunPredictor:
             return 1.0  # Default neutral factor
 
     def convert_names_for_statcast_improved(self, names):
-        """IMPROVED: Convert 'First Last' to multiple Statcast format variations"""
+        """ENHANCED: Convert 'First Last' to multiple Statcast format variations"""
         converted_names = []
         name_map = {}
         
@@ -503,6 +503,12 @@ class MLBHomeRunPredictor:
             converted_names.append(name)
             name_map[name] = name
             
+            # Add normalized version
+            normalized = self.normalize_name_for_savant_matching(name)
+            if normalized != name and normalized:
+                converted_names.append(normalized)
+                name_map[normalized] = name
+            
             if ' ' in name:
                 parts = name.split()
                 
@@ -512,6 +518,15 @@ class MLBHomeRunPredictor:
                     converted = f"{last}, {first}"
                     converted_names.append(converted)
                     name_map[converted] = name
+                    
+                    # Also try normalized version
+                    norm_last = self.normalize_name_for_savant_matching(last)
+                    norm_first = self.normalize_name_for_savant_matching(first)
+                    if norm_last and norm_first:
+                        norm_converted = f"{norm_last}, {norm_first}"
+                        if norm_converted != converted:
+                            converted_names.append(norm_converted)
+                            name_map[norm_converted] = name
                     
                     # Also try "Last, F." format (common in Statcast)
                     first_initial = f"{last}, {first[0]}."
@@ -548,14 +563,22 @@ class MLBHomeRunPredictor:
                     last = parts[-1]
                     first = parts[0]
                     
+                    # Enhanced nickname mapping
                     nickname_map = {
-                        'mike': 'michael', 'nick': 'nicholas', 'rob': 'robert', 
-                        'bob': 'robert', 'alex': 'alexander', 'matt': 'matthew',
-                        'chris': 'christopher', 'josh': 'joshua', 'jake': 'jacob',
-                        'will': 'william', 'bill': 'william', 'jim': 'james',
-                        'jimmy': 'james', 'tom': 'thomas', 'rick': 'richard',
-                        'steve': 'steven', 'dan': 'daniel', 'dave': 'david',
-                        'joe': 'joseph', 'joey': 'joseph'
+                        'mike': 'michael', 'mikey': 'michael', 'nick': 'nicholas', 'nicky': 'nicholas',
+                        'rob': 'robert', 'bob': 'robert', 'bobby': 'robert', 'alex': 'alexander', 
+                        'al': 'albert', 'matt': 'matthew', 'chris': 'christopher', 'topher': 'christopher',
+                        'josh': 'joshua', 'jake': 'jacob', 'will': 'william', 'bill': 'william', 
+                        'billy': 'william', 'jim': 'james', 'jimmy': 'james', 'jamie': 'james',
+                        'charlie': 'charles', 'chuck': 'charles', 'tom': 'thomas', 'tommy': 'thomas',
+                        'rick': 'richard', 'dick': 'richard', 'richie': 'richard', 'steve': 'steven',
+                        'stevie': 'steven', 'dan': 'daniel', 'danny': 'daniel', 'dave': 'david',
+                        'davey': 'david', 'joe': 'joseph', 'joey': 'joseph', 'jeff': 'jeffrey',
+                        'greg': 'gregory', 'fred': 'frederick', 'freddy': 'frederick', 
+                        'ben': 'benjamin', 'benny': 'benjamin', 'sam': 'samuel', 'sammy': 'samuel',
+                        # Spanish nicknames
+                        'paco': 'francisco', 'pancho': 'francisco', 'pepe': 'jose', 'checo': 'sergio',
+                        'rafa': 'rafael', 'raffy': 'rafael', 'lucho': 'luis', 'memo': 'guillermo'
                     }
                     
                     first_lower = first.lower()
@@ -576,153 +599,150 @@ class MLBHomeRunPredictor:
         return converted_names, name_map
 
     def integrate_savant_data(self):
-        """Integrate Baseball Savant data into existing stats - IMPROVED VERSION"""
-        logger.info("Integrating Baseball Savant data with improved name matching")
+        """Integrate Baseball Savant data into existing stats - ENHANCED VERSION"""
+        logger.info("Integrating Baseball Savant data with improved name matching and error handling")
         
-        # Get player and pitcher names
-        player_names = get_player_names_from_lineups(self.lineups)
-        pitcher_names = get_pitcher_names_from_probable_pitchers(self.probable_pitchers)
+        try:
+            # Get player and pitcher names
+            player_names = get_player_names_from_lineups(self.lineups)
+            pitcher_names = get_pitcher_names_from_probable_pitchers(self.probable_pitchers)
 
-        # IMPROVED: Convert names with better matching
-        converted_players, player_map = self.convert_names_for_statcast_improved(player_names)
-        converted_pitchers, pitcher_map = self.convert_names_for_statcast_improved(pitcher_names)
-        
-        logger.info(f"IMPROVED: Converting {len(player_names)} player names to {len(converted_players)} Statcast variants")
-        
-        # Get recent data (last 15 days) with converted names
-        batter_savant, pitcher_savant = get_savant_data(converted_players, converted_pitchers)
-
-        logger.info(f"IMPROVED: Statcast returned {len(batter_savant)} batters, {len(pitcher_savant)} pitchers")
-        
-        # Get seasonal data for more statistical significance
-        batter_season, pitcher_season = get_seasonal_data(converted_players, converted_pitchers)
-        
-        # IMPROVED: Map results back to original names with better logging
-        batter_savant_fixed = {}
-        successful_matches = 0
-        
-        for statcast_name, data in batter_savant.items():
-            if statcast_name in player_map:
-                original_name = player_map[statcast_name]
-                batter_savant_fixed[original_name] = data
-                successful_matches += 1
-                logger.info(f"✅ Matched batter: '{original_name}' -> '{statcast_name}'")
-        
-        # Also try seasonal data for players not found in recent data
-        for statcast_name, data in batter_season.items():
-            if statcast_name in player_map:
-                original_name = player_map[statcast_name]
-                if original_name not in batter_savant_fixed:  # Only if not already found
+            # IMPROVED: Convert names with better matching
+            converted_players, player_map = self.convert_names_for_statcast_improved(player_names)
+            converted_pitchers, pitcher_map = self.convert_names_for_statcast_improved(pitcher_names)
+            
+            logger.info(f"IMPROVED: Converting {len(player_names)} player names to {len(converted_players)} Statcast variants")
+            
+            # Try to get recent Savant data with error handling
+            batter_savant = {}
+            pitcher_savant = {}
+            
+            try:
+                batter_savant, pitcher_savant = get_savant_data(converted_players, converted_pitchers)
+                logger.info(f"IMPROVED: Statcast returned {len(batter_savant)} batters, {len(pitcher_savant)} pitchers")
+            except Exception as e:
+                logger.warning(f"Recent Savant data fetch failed: {e}")
+            
+            # Try seasonal data as fallback
+            batter_season = {}
+            pitcher_season = {}
+            
+            try:
+                batter_season, pitcher_season = get_seasonal_data(converted_players, converted_pitchers)
+                logger.info(f"FALLBACK: Seasonal data returned {len(batter_season)} batters, {len(pitcher_season)} pitchers")
+            except Exception as e:
+                logger.warning(f"Seasonal data fetch also failed: {e}")
+            
+            # IMPROVED: Map results back to original names with better logging
+            batter_savant_fixed = {}
+            successful_matches = 0
+            
+            # Process recent data first
+            for statcast_name, data in batter_savant.items():
+                if statcast_name in player_map:
+                    original_name = player_map[statcast_name]
                     batter_savant_fixed[original_name] = data
                     successful_matches += 1
-                    logger.info(f"✅ Matched batter (seasonal): '{original_name}' -> '{statcast_name}'")
-        
-        batter_savant = batter_savant_fixed
-        logger.info(f"FINAL: Successfully matched {successful_matches} batters with Statcast data")
-        
-        # DEBUG: Check what names we have
-        print("="*50)
-        print(f"MLB NAMES (first 3): {list(player_names)[:3]}")
-        print(f"STATCAST FOUND: {len(batter_savant)} recent, {len(batter_season)} seasonal")
-        if batter_savant:
-            print(f"MATCHED NAME: {list(batter_savant.keys())[0]}")
-        print("="*50)
-        
-        # DEBUG: Check the cache file
-        import json
-        try:
-            with open('savant_cache/savant_data_20250527.json', 'r') as f:
-                cache_data = json.load(f)
-                if 'batters' in cache_data:
-                    statcast_names = list(cache_data['batters'].keys())[:5]
-                    print("="*50)
-                    print(f"STATCAST NAME FORMAT: {statcast_names}")
-                    print("="*50)
-        except:
-            print("Could not read cache file")
-        
-        # NEW: Get recent form data for trend analysis
-        savant = BaseballSavant()
-        
-        # Integrate data (prioritize recent data, fall back to seasonal)
-        for player_name in self.player_stats:
-            # Get recent data if available, otherwise use seasonal
-            savant_data = batter_savant.get(player_name, batter_season.get(player_name, {}))
+                    logger.info(f"✅ Matched batter: '{original_name}' -> '{statcast_name}'")
             
-            # NEW: Get recent form trend
-            #recent_form = savant.get_batter_recent_form(player_name, days=10)
-            #
-            #if recent_form and recent_form.get('trend'):
-            #    # Add form trend to player stats
-            #    self.player_stats[player_name]['form_trend'] = recent_form['trend']
-            #    self.player_stats[player_name]['avg_ev_last_3'] = recent_form.get('avg_ev_last_3', 0)
-            #   
-            #    # Adjust hot/cold streak based on actual trend data
-            #    if recent_form['trend'] == 'improving':
-            #        current_streak = self.player_stats[player_name].get('hot_cold_streak', 1.0)
-            #        self.player_stats[player_name]['hot_cold_streak'] = max(current_streak, 1.15)
-            #    elif recent_form['trend'] == 'declining':
-            #        current_streak = self.player_stats[player_name].get('hot_cold_streak', 1.0)
-            #        self.player_stats[player_name]['hot_cold_streak'] = min(current_streak, 0.85)
+            # Then seasonal data for players not found in recent data
+            for statcast_name, data in batter_season.items():
+                if statcast_name in player_map:
+                    original_name = player_map[statcast_name]
+                    if original_name not in batter_savant_fixed:  # Only if not already found
+                        batter_savant_fixed[original_name] = data
+                        successful_matches += 1
+                        logger.info(f"✅ Matched batter (seasonal): '{original_name}' -> '{statcast_name}'")
             
-            if savant_data:
-                # Update spray angle data
-                spray_data = savant_data.get('spray_angle', {})
-                self.player_stats[player_name]['spray_angle'] = {
-                    'pull_pct': spray_data.get('pull_pct', self.player_stats[player_name].get('pull_pct', 0.4)),
-                    'center_pct': spray_data.get('center_pct', 0.33),
-                    'oppo_pct': spray_data.get('oppo_pct', 0.27),
-                    'pull_slg': spray_data.get('pull_slg', 0.5),
-                    'center_slg': spray_data.get('center_slg', 0.5),
-                    'oppo_slg': spray_data.get('oppo_slg', 0.5)
-                }
+            batter_savant = batter_savant_fixed
+            logger.info(f"FINAL: Successfully matched {successful_matches} batters with Statcast data")
+            
+            # Process pitcher data similarly
+            pitcher_matches = 0
+            for statcast_name, data in pitcher_savant.items():
+                if statcast_name in pitcher_map:
+                    original_name = pitcher_map[statcast_name]
+                    pitcher_matches += 1
+                    logger.info(f"✅ Matched pitcher: '{original_name}' -> '{statcast_name}'")
+            
+            # Log match rate warnings
+            if successful_matches < len(player_names) * 0.2:  # Less than 20% matched
+                logger.warning(f"LOW MATCH RATE: Only {successful_matches}/{len(player_names)} players matched with Savant data")
+                logger.warning("This may be normal during off-season or indicate API issues")
+            
+            # Integrate the matched data
+            for player_name in self.player_stats:
+                # Get recent data if available, otherwise use seasonal
+                savant_data = batter_savant.get(player_name, batter_season.get(player_name, {}))
                 
-                # Update zone contact data
-                zone_data = savant_data.get('zone_contact', {})
-                self.player_stats[player_name]['zone_contact'] = {
-                    'up_barrel_pct': zone_data.get('up_barrel_pct', 0.05),
-                    'middle_barrel_pct': zone_data.get('middle_barrel_pct', 0.05),
-                    'down_barrel_pct': zone_data.get('down_barrel_pct', 0.05),
-                    'in_barrel_pct': zone_data.get('in_barrel_pct', 0.05),
-                    'out_barrel_pct': zone_data.get('out_barrel_pct', 0.05)
-                }
-                
-                logger.info(f"Updated Savant data for batter: {player_name}")
-                
-                # NEW CODE: Check if player is in away games and add ballpark-specific data
-                for _, game in self.games.iterrows():
-                    game_id = game['game_id']
-                    home_team = game['home_team']
+                if savant_data:
+                    # Update spray angle data
+                    spray_data = savant_data.get('spray_angle', {})
+                    if spray_data:
+                        self.player_stats[player_name]['spray_angle'] = {
+                            'pull_pct': spray_data.get('pull_pct', self.player_stats[player_name].get('pull_pct', 0.4)),
+                            'center_pct': spray_data.get('center_pct', 0.33),
+                            'oppo_pct': spray_data.get('oppo_pct', 0.27),
+                            'pull_slg': spray_data.get('pull_slg', 0.5),
+                            'center_slg': spray_data.get('center_slg', 0.5),
+                            'oppo_slg': spray_data.get('oppo_slg', 0.5)
+                        }
                     
-                    # Check if player is in this game
-                    for lineup_game_id, lineup in self.lineups.items():
-                        if game_id == lineup_game_id:
-                            if player_name in lineup.get('home', []):
-                                # Player is playing in their home park - no need for ballpark analysis
-                                break
-                            elif player_name in lineup.get('away', []):
-                                # Player is visiting - check their history in this ballpark
-                                ballpark_data = get_ballpark_data(player_name)
-                                
-                                # Get this ballpark's name
-                                ballpark_name = game.get('ballpark', '')
-                                
-                                if ballpark_name in ballpark_data:
-                                    # Add ballpark-specific performance
-                                    self.player_stats[player_name]['ballpark_history'] = ballpark_data[ballpark_name]
-                                    logger.info(f"Added ballpark history for {player_name} in {ballpark_name}")
-        
-        # Integrate pitcher data
-        for pitcher_name, savant_data in pitcher_savant.items():
-            if pitcher_name in self.pitcher_stats:
-                # Update zone profile
-                zone_profile = savant_data.get('zone_profile', {})
-                self.pitcher_stats[pitcher_name]['zone_profile'] = zone_profile
-                
-                # Update primary tendency
-                self.pitcher_stats[pitcher_name]['primary_tendency'] = savant_data.get('primary_tendency', 'mixed')
-                
-                logger.info(f"Updated Savant data for pitcher: {pitcher_name}")
+                    # Update zone contact data
+                    zone_data = savant_data.get('zone_contact', {})
+                    if zone_data:
+                        self.player_stats[player_name]['zone_contact'] = {
+                            'up_barrel_pct': zone_data.get('up_barrel_pct', 0.05),
+                            'middle_barrel_pct': zone_data.get('middle_barrel_pct', 0.05),
+                            'down_barrel_pct': zone_data.get('down_barrel_pct', 0.05),
+                            'in_barrel_pct': zone_data.get('in_barrel_pct', 0.05),
+                            'out_barrel_pct': zone_data.get('out_barrel_pct', 0.05)
+                        }
+                    
+                    # Update core metrics with real Savant data
+                    if 'avg_ev' in savant_data and savant_data['avg_ev'] > 0:
+                        self.player_stats[player_name]['exit_velo'] = savant_data['avg_ev']
+                    if 'hard_hit_pct' in savant_data and savant_data['hard_hit_pct'] > 0:
+                        self.player_stats[player_name]['hard_hit_pct'] = savant_data['hard_hit_pct']
+                    if 'barrel_pct' in savant_data:
+                        # Use safe_float function to handle potential issues
+                        barrel_val = safe_float(savant_data['barrel_pct'], 0.05)
+                        if barrel_val > 0:
+                            self.player_stats[player_name]['barrel_pct'] = barrel_val
+                    
+                    logger.info(f"Updated Savant data for batter: {player_name}")
+            
+            # Integrate pitcher data
+            for pitcher_name, savant_data in pitcher_savant.items():
+                if pitcher_name in self.pitcher_stats:
+                    # Update zone profile
+                    zone_profile = savant_data.get('zone_profile', {})
+                    if zone_profile:
+                        self.pitcher_stats[pitcher_name]['zone_profile'] = zone_profile
+                    
+                    # Update primary tendency
+                    if 'primary_tendency' in savant_data:
+                        self.pitcher_stats[pitcher_name]['primary_tendency'] = savant_data.get('primary_tendency', 'mixed')
+                    
+                    logger.info(f"Updated Savant data for pitcher: {pitcher_name}")
+            
+            # Summary log
+            enhanced_players = sum(1 for p in self.player_stats.values() if 'spray_angle' in p)
+            logger.info(f"SAVANT INTEGRATION COMPLETE: Enhanced {enhanced_players}/{len(self.player_stats)} players")
+            
+        except Exception as e:
+            logger.error(f"Error in Savant integration: {e}")
+            logger.info("Continuing without Savant data enhancement - using default values")
+
+    # Also add this helper function right after the integrate_savant_data method:
+    def safe_float(value, default=0.0):
+        """Convert a value to float, handling NAType and other invalid values"""
+        try:
+            if pd.isna(value):  # This handles pd.NA, None, np.nan, etc.
+                return default
+            return float(value)
+        except (ValueError, TypeError):
+            return default
 
     def calculate_streak_factor(self, batter):
         """Calculate hot/cold streak factor based on recent performance"""
@@ -1190,6 +1210,27 @@ class MLBHomeRunPredictor:
             normalized = unicodedata.normalize('NFKD', normalized).encode('ASCII', 'ignore').decode('ASCII')
         except:
             pass
+        
+        return normalized.strip()
+
+    def normalize_name_for_savant_matching(self, name):
+        """Enhanced name normalization for better Savant matching"""
+        if not name:
+            return ""
+        
+        import unicodedata
+        
+        # Remove accents and normalize
+        normalized = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
+        
+        # Remove suffixes
+        suffixes = [' Jr.', ' Jr', ' Sr.', ' Sr', ' II', ' III', ' IV']
+        for suffix in suffixes:
+            if normalized.endswith(suffix):
+                normalized = normalized[:-len(suffix)]
+        
+        # Clean up spaces
+        normalized = ' '.join(normalized.split())
         
         return normalized.strip()
 
