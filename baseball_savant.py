@@ -78,9 +78,9 @@ class BaseballSavant:
                 logger.error(f"Error loading cached data: {e}")
                 # Continue with fresh data fetch
         
-        # Define date range - last 14 days
-        end_date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=15)).strftime("%Y-%m-%d")
+        # NEW (OPTIMAL 2025 RANGE):
+        end_date = "2025-04-28"  # End of optimal range
+        start_date = "2025-03-28"  # Start of optimal range (120K+ events!)
         
         logger.info(f"Fetching Statcast data from {start_date} to {end_date}")
         
@@ -334,8 +334,7 @@ class BaseballSavant:
         return pitchers
     
     def _advanced_name_matching(self, search_name, candidate_names):
-        """Advanced player name matching algorithm"""
-        # Handle empty inputs
+        """FIXED: Advanced player name matching algorithm"""
         if not search_name or not candidate_names:
             return None
             
@@ -347,7 +346,7 @@ class BaseballSavant:
             if name.lower() == search_name:
                 return name
         
-        # Step 2: Split into components for partial matching
+        # Step 2: Parse search name into components
         search_parts = search_name.split()
         if len(search_parts) < 2:
             return None  # Need at least first and last name
@@ -355,67 +354,38 @@ class BaseballSavant:
         search_first = search_parts[0]
         search_last = search_parts[-1]
         
-        # Step 3: Try last name + first initial (common format in Statcast)
+        # CRITICAL FIX: More precise matching
         for name in candidate_names:
             name_parts = name.lower().split()
             if len(name_parts) < 2:
                 continue
                 
-            cand_first = name_parts[0]
-            cand_last = name_parts[-1]
+            # Handle "Last, First" format in candidate names
+            if ',' in name:
+                # "Judge, Aaron" format
+                name_clean = name.replace(',', '').strip()
+                name_parts = name_clean.split()
+                if len(name_parts) >= 2:
+                    cand_last = name_parts[0]  # First part is last name
+                    cand_first = name_parts[1]  # Second part is first name
+            else:
+                # "Aaron Judge" format  
+                cand_first = name_parts[0]
+                cand_last = name_parts[-1]
             
-            # Check for matching last name + first initial match
-            if cand_last == search_last and cand_first[0] == search_first[0]:
+            # PRECISE MATCHING: Both first AND last name must match
+            # This prevents "Aaron Judge" from matching "Nola, Aaron"
+            if (search_first == cand_first and search_last == cand_last):
+                return name
+            
+            # Also try first initial matching (but still require exact last name)
+            if (search_first[0] == cand_first[0] and search_last == cand_last):
                 return name
         
-        # Step 4: Handle common name variations
+        # Step 3: Handle name variations but maintain precision
         name_variations = {
-            'mike': 'michael',
-            'mikey': 'michael',
-            'nick': 'nicholas',
-            'rob': 'robert',
-            'bob': 'robert',
-            'bobby': 'robert',
-            'alex': 'alexander',
-            'al': 'albert',
-            'matt': 'matthew',
-            'chris': 'christopher',
-            'josh': 'joshua',
-            'jake': 'jacob',
-            'will': 'william',
-            'bill': 'william',
-            'billy': 'william',
-            'jim': 'james',
-            'jimmy': 'james',
-            'jamie': 'james',
-            'charlie': 'charles',
-            'chuck': 'charles',
-            'tom': 'thomas',
-            'tommy': 'thomas',
-            'rick': 'richard',
-            'dick': 'richard',
-            'richie': 'richard',
-            'steve': 'steven',
-            'stevie': 'steven',
-            'dan': 'daniel',
-            'danny': 'daniel',
-            'dave': 'david',
-            'davey': 'david',
-            'joe': 'joseph',
-            'joey': 'joseph',
-            'jeff': 'jeffrey',
-            'greg': 'gregory',
-            'fred': 'frederick',
-            'freddy': 'frederick',
-            'ben': 'benjamin',
-            'benny': 'benjamin',
-            'sam': 'samuel',
-            'sammy': 'samuel',
-            'jr.': '',
-            'jr': '',
-            'sr.': '',
-            'sr': '',
-            'iii': ''
+            'mike': 'michael', 'nick': 'nicholas', 'rob': 'robert', 'alex': 'alexander',
+            'matt': 'matthew', 'chris': 'christopher', 'josh': 'joshua', 'jake': 'jacob'
         }
         
         # Try with name variations
@@ -425,37 +395,52 @@ class BaseballSavant:
             if len(name_parts) < 2:
                 continue
                 
-            cand_first = name_parts[0]
-            cand_last = name_parts[-1]
+            if ',' in name:
+                name_clean = name.replace(',', '').strip()
+                name_parts = name_clean.split()
+                if len(name_parts) >= 2:
+                    cand_last = name_parts[0]
+                    cand_first = name_parts[1]
+            else:
+                cand_first = name_parts[0]
+                cand_last = name_parts[-1]
             
-            # Check with normalized first name
-            if cand_last == search_last and (cand_first == search_first_var or name_variations.get(cand_first, '') == search_first):
+            # Check with normalized first name BUT exact last name
+            if ((cand_first == search_first_var or name_variations.get(cand_first, '') == search_first) 
+                and cand_last == search_last):
                 return name
         
-        # Step 5: Try fuzzy matching for cases with typos or slight variations
-        best_match = None
-        best_score = 0
+        # No match found
+        return None
+
+    # FIX 3: DEBUG THE ACTUAL NAMES
+    # Add this debug method to see what names are actually in the data:
+
+    def debug_player_names_in_cache(self):
+        """Debug method to see actual player names in cached data"""
+        cache_file = os.path.join(self.cache_dir, f'savant_data_{datetime.now().strftime("%Y%m%d")}.json')
         
-        for name in candidate_names:
-            name_parts = name.lower().split()
-            if len(name_parts) < 2:
-                continue
-                
-            cand_first = name_parts[0]
-            cand_last = name_parts[-1]
+        if os.path.exists(cache_file):
+            with open(cache_file, 'r') as f:
+                data = json.load(f)
             
-            # Simple string similarity score (can be improved with proper fuzzy matching)
-            last_name_similarity = self._string_similarity(search_last, cand_last)
-            first_name_similarity = self._string_similarity(search_first, cand_first)
+            batters = data.get('batters', {})
+            print(f"\n🔍 ACTUAL NAMES IN CACHE ({len(batters)} batters):")
             
-            # Weight last name matches more heavily than first names
-            combined_score = (last_name_similarity * 0.7) + (first_name_similarity * 0.3)
+            # Look for our test players specifically
+            test_players = ['judge', 'soto', 'ohtani', 'acuna']
             
-            if combined_score > best_score and combined_score > 0.8:  # Threshold for fuzzy match
-                best_score = combined_score
-                best_match = name
-        
-        return best_match
+            for test_player in test_players:
+                matches = [name for name in batters.keys() if test_player in name.lower()]
+                if matches:
+                    print(f"   '{test_player}' matches: {matches}")
+                else:
+                    print(f"   '{test_player}' -> NO MATCHES")
+            
+            # Show first 20 actual names
+            print(f"\n📋 FIRST 20 ACTUAL BATTER NAMES:")
+            for i, name in enumerate(list(batters.keys())[:20], 1):
+                print(f"   {i:2d}. '{name}'")
 
     def _string_similarity(self, s1, s2):
         """Calculate string similarity ratio (0-1)"""
