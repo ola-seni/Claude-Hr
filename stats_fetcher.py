@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger("MLB-HR-Predictor")
 
-def fetch_recent_player_performance(player_id, player_name, days_back=10):
+def fetch_recent_player_performance(player_id, player_name, days_back=21):
     """Fetch recent performance data for a player (last N days)"""
     try:
         # FIXED: Use correct parameters for game logs
@@ -16,6 +16,9 @@ def fetch_recent_player_performance(player_id, player_name, days_back=10):
             sportId=1
             # REMOVED: season=2025 - this was causing the error!
         )
+
+        # ADD THIS DEBUG
+        logger.info(f"DEBUG: Game logs response for {player_name}: {len(game_logs_response.get('stats', []))} stat groups")
         
         if 'stats' not in game_logs_response:
             logger.debug(f"No game logs available for {player_name}")
