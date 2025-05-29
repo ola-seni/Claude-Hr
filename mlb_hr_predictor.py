@@ -482,68 +482,143 @@ class MLBHomeRunPredictor:
             logger.error(f"Error calculating platoon advantage for {batter} vs {pitcher}: {e}")
             return 1.0  # Default neutral factor
 
-    def convert_names_for_statcast(self, names):
-        """Convert 'First Last' to 'Last, First' format for Statcast matching"""
+    def convert_names_for_statcast_improved(self, names):
+        """IMPROVED: Convert 'First Last' to multiple Statcast format variations"""
         converted_names = []
-        name_map = {}  # Maps converted names back to original
+        name_map = {}
         
         # Convert set to list if needed
         if isinstance(names, set):
             names = list(names)
         
         for name in names:
-            if ' ' in name:
-                parts = name.split(' ')
-                if len(parts) == 2:
-                    # Simple case: "First Last" -> "Last, First"
-                    converted = f"{parts[1]}, {parts[0]}"
-                    converted_names.append(converted)
-                    name_map[converted] = name
-                elif len(parts) == 3 and parts[2] in ['Jr', 'Jr.', 'Sr', 'Sr.', 'II', 'III']:
-                    # Handle suffixes: "First Last Jr" -> "Last Jr., First"
-                    converted = f"{parts[1]} {parts[2]}, {parts[0]}"
-                    converted_names.append(converted)
-                    name_map[converted] = name
-            
-            # Also keep the original name just in case
+            if not name or not isinstance(name, str):
+                continue
+                
+            name = name.strip()
+            if not name:
+                continue
+                
+            # Store original format
             converted_names.append(name)
             name_map[name] = name
+            
+            if ' ' in name:
+                parts = name.split()
+                
+                if len(parts) == 2:
+                    # "First Last" -> "Last, First"
+                    first, last = parts[0], parts[1]
+                    converted = f"{last}, {first}"
+                    converted_names.append(converted)
+                    name_map[converted] = name
+                    
+                    # Also try "Last, F." format (common in Statcast)
+                    first_initial = f"{last}, {first[0]}."
+                    converted_names.append(first_initial)
+                    name_map[first_initial] = name
+                    
+                elif len(parts) == 3:
+                    # Handle "First Last Jr" or "First Middle Last"
+                    if parts[2].lower() in ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv']:
+                        # "First Last Jr" -> "Last Jr., First"
+                        first, last, suffix = parts[0], parts[1], parts[2]
+                        converted = f"{last} {suffix}, {first}"
+                        converted_names.append(converted)
+                        name_map[converted] = name
+                        
+                        # Also try without suffix
+                        no_suffix = f"{last}, {first}"
+                        converted_names.append(no_suffix)
+                        name_map[no_suffix] = name
+                    else:
+                        # "First Middle Last" -> "Last, First Middle" and "Last, First"
+                        first, middle, last = parts[0], parts[1], parts[2]
+                        converted = f"{last}, {first} {middle}"
+                        converted_names.append(converted)
+                        name_map[converted] = name
+                        
+                        # Also try just first name
+                        simple = f"{last}, {first}"
+                        converted_names.append(simple)
+                        name_map[simple] = name
+                
+                # Try common nickname variations
+                if len(parts) >= 2:
+                    last = parts[-1]
+                    first = parts[0]
+                    
+                    nickname_map = {
+                        'mike': 'michael', 'nick': 'nicholas', 'rob': 'robert', 
+                        'bob': 'robert', 'alex': 'alexander', 'matt': 'matthew',
+                        'chris': 'christopher', 'josh': 'joshua', 'jake': 'jacob',
+                        'will': 'william', 'bill': 'william', 'jim': 'james',
+                        'jimmy': 'james', 'tom': 'thomas', 'rick': 'richard',
+                        'steve': 'steven', 'dan': 'daniel', 'dave': 'david',
+                        'joe': 'joseph', 'joey': 'joseph'
+                    }
+                    
+                    first_lower = first.lower()
+                    
+                    # If input is nickname, try full name  
+                    if first_lower in nickname_map:
+                        full_name = f"{last}, {nickname_map[first_lower].title()}"
+                        converted_names.append(full_name)
+                        name_map[full_name] = name
+                    
+                    # If input is full name, try nickname
+                    for nick, full in nickname_map.items():
+                        if first_lower == full:
+                            nick_name = f"{last}, {nick.title()}"
+                            converted_names.append(nick_name)
+                            name_map[nick_name] = name
         
         return converted_names, name_map
 
     def integrate_savant_data(self):
-        """Integrate Baseball Savant data into existing stats"""
-        logger.info("Integrating Baseball Savant data")
+        """Integrate Baseball Savant data into existing stats - IMPROVED VERSION"""
+        logger.info("Integrating Baseball Savant data with improved name matching")
         
         # Get player and pitcher names
         player_names = get_player_names_from_lineups(self.lineups)
         pitcher_names = get_pitcher_names_from_probable_pitchers(self.probable_pitchers)
 
-        # Convert names to Statcast format
-        converted_players, player_map = self.convert_names_for_statcast(player_names)
-        converted_pitchers, pitcher_map = self.convert_names_for_statcast(pitcher_names)
+        # IMPROVED: Convert names with better matching
+        converted_players, player_map = self.convert_names_for_statcast_improved(player_names)
+        converted_pitchers, pitcher_map = self.convert_names_for_statcast_improved(pitcher_names)
         
-        print(f"DEBUG: Converting {len(player_names)} player names to Statcast format...")
+        logger.info(f"IMPROVED: Converting {len(player_names)} player names to {len(converted_players)} Statcast variants")
         
         # Get recent data (last 15 days) with converted names
         batter_savant, pitcher_savant = get_savant_data(converted_players, converted_pitchers)
 
-        # DEBUG: Let's see what names Statcast returned
-        logger.info(f"Statcast returned {len(batter_savant)} batters")
-        if batter_savant:
-            logger.info(f"First 5 Statcast batter names: {list(batter_savant.keys())[:5]}")
-        
+        logger.info(f"IMPROVED: Statcast returned {len(batter_savant)} batters, {len(pitcher_savant)} pitchers")
         
         # Get seasonal data for more statistical significance
         batter_season, pitcher_season = get_seasonal_data(converted_players, converted_pitchers)
         
-        # Map results back to original names
+        # IMPROVED: Map results back to original names with better logging
         batter_savant_fixed = {}
+        successful_matches = 0
+        
         for statcast_name, data in batter_savant.items():
             if statcast_name in player_map:
                 original_name = player_map[statcast_name]
                 batter_savant_fixed[original_name] = data
+                successful_matches += 1
+                logger.info(f"✅ Matched batter: '{original_name}' -> '{statcast_name}'")
+        
+        # Also try seasonal data for players not found in recent data
+        for statcast_name, data in batter_season.items():
+            if statcast_name in player_map:
+                original_name = player_map[statcast_name]
+                if original_name not in batter_savant_fixed:  # Only if not already found
+                    batter_savant_fixed[original_name] = data
+                    successful_matches += 1
+                    logger.info(f"✅ Matched batter (seasonal): '{original_name}' -> '{statcast_name}'")
+        
         batter_savant = batter_savant_fixed
+        logger.info(f"FINAL: Successfully matched {successful_matches} batters with Statcast data")
         
         # DEBUG: Check what names we have
         print("="*50)
