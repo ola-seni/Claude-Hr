@@ -188,6 +188,7 @@ def aggregate_recent_batting_stats(game_stats_list, games_played, player_name):
     x_iso = iso * 0.9 + barrel_pct * 0.05
  main
 
+
     return {
         'games': games_played,
         'pa': totals['pa'],
@@ -340,6 +341,7 @@ def fetch_player_stats(player_names, days_back=10):
                         barrel_pct = min(0.20, hr_per_pa * 3 + float(all_stats.get('slg', 0)) / 10)
                         x_iso = iso * 0.9 + barrel_pct * 0.05
  main
+
 
                         season_data = {
                             'player_id': player_id,
