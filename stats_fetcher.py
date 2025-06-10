@@ -17,8 +17,6 @@ def fetch_recent_player_performance(player_id, player_name, days_back=21):
             # REMOVED: season=2025 - this was causing the error!
         )
 
-        # ADD THIS DEBUG
-        logger.info(f"DEBUG: Game logs response for {player_name}: {len(game_logs_response.get('stats', []))} stat groups")
         
         if 'stats' not in game_logs_response:
             logger.debug(f"No game logs available for {player_name}")
