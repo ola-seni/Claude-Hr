@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 from datetime import datetime, timedelta
 
-def test_player_lookup(first_name, last_name):
+def player_lookup_demo(first_name, last_name):
     """Test looking up a player ID from first and last name"""
     print(f"\n=== Testing player lookup for {first_name} {last_name} ===")
     
@@ -256,7 +256,7 @@ def main():
     for player in test_players:
         print(f"\n\n>>> ANALYZING {player['name']} <<<")
         # First make sure we can look up the player
-        player_id = test_player_lookup(player['first'], player['last'])
+        player_id = player_lookup_demo(player['first'], player['last'])
         
         # Then analyze their data from the dataset
         player_data = analyze_player_data(all_data, player['last'], player['is_pitcher'])
