@@ -103,19 +103,29 @@ def estimate_advanced_metrics(player_name, slg=0.0, hr_per_pa=0.0, iso=0.0):
 
     exit_velo = 80 + slg * 25
     if exit_velo == 80:
+        # When no slugging info, derive a base from the player's name
         exit_velo = 87 + (name_seed % 6)  # 87-92 mph
+    else:
+        # Add a small deterministic bump so players with identical stats differ
+        exit_velo += (name_seed % 7) / 10.0  # ±0-0.6 mph variation
 
     hr_fb_ratio = min(0.5, hr_per_pa * 8)
     if hr_fb_ratio == 0:
         hr_fb_ratio = 0.10 + (name_seed % 10) / 100.0
+    else:
+        hr_fb_ratio += (name_seed % 10) / 1000.0
 
     barrel_pct = min(0.20, hr_per_pa * 3 + slg / 10)
     if barrel_pct == 0:
         barrel_pct = 0.05 + (name_seed % 10) / 100.0
+    else:
+        barrel_pct += (name_seed % 10) / 1000.0
 
     x_iso = iso * 0.9 + barrel_pct * 0.05
     if iso == 0 and barrel_pct == 0:
         x_iso = 0.15 + (name_seed % 5) / 100.0
+    else:
+        x_iso += (name_seed % 5) / 1000.0
 
     return exit_velo, hr_fb_ratio, barrel_pct, x_iso
 
