@@ -66,7 +66,7 @@ def fetch_recent_pitcher_performance(pitcher_id, pitcher_name, days_back=10):
             return None
             
         # Calculate date cutoff
-        cutoff_date = (datetime.datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+        cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
         
         # Process game logs
         recent_games = []
