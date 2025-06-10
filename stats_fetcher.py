@@ -17,8 +17,6 @@ def fetch_recent_player_performance(player_id, player_name, days_back=21):
             # REMOVED: season=2025 - this was causing the error!
         )
 
-        # ADD THIS DEBUG
-        logger.info(f"DEBUG: Game logs response for {player_name}: {len(game_logs_response.get('stats', []))} stat groups")
         
         if 'stats' not in game_logs_response:
             logger.debug(f"No game logs available for {player_name}")
@@ -66,7 +64,7 @@ def fetch_recent_pitcher_performance(pitcher_id, pitcher_name, days_back=10):
             return None
             
         # Calculate date cutoff
-        cutoff_date = (datetime.datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+        cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
         
         # Process game logs
         recent_games = []
@@ -140,6 +138,12 @@ def aggregate_recent_batting_stats(game_stats_list, games_played):
     else:
         hot_cold_streak = 1.0  # Normal
     
+    # Approximate advanced metrics from basic stats so values vary
+    exit_velo = 80 + slg * 25
+    hr_fb_ratio = min(0.5, hr_per_pa * 8)
+    barrel_pct = min(0.20, hr_per_pa * 3 + slg / 10)
+    x_iso = iso * 0.9 + barrel_pct * 0.05
+
     return {
         'games': games_played,
         'pa': totals['pa'],
@@ -157,22 +161,22 @@ def aggregate_recent_batting_stats(game_stats_list, games_played):
         'hr_per_game': hr_per_game,
         'hot_cold_streak': hot_cold_streak,
         'streak_duration': games_played,
-        # Default values for advanced metrics (would need Statcast data for real values)
-        'barrel_pct': 0.05,
-        'exit_velo': 88.0,
+        # Simple estimates for advanced metrics (would need Statcast data for real values)
+        'barrel_pct': barrel_pct,
+        'exit_velo': exit_velo,
         'launch_angle': 12.0,
         'pull_pct': 0.40,
         'fb_pct': 0.35,
         'hard_pct': 0.30,
         'hard_hit_pct': 0.30,
-        'hr_fb_ratio': 0.15,
+        'hr_fb_ratio': hr_fb_ratio,
         'vs_fastball': 1.0,
         'vs_breaking': 1.0,
         'vs_offspeed': 1.0,
         'home_factor': 1.0,
         'road_factor': 1.0,
         'xwOBA': 0.320,
-        'xISO': 0.150,
+        'xISO': x_iso,
         'bats': 'Unknown'
     }
 
@@ -286,6 +290,11 @@ def fetch_player_stats(player_names, days_back=10):
                             iso = hr_per_pa = hr_per_game = 0
                         
                         # Season stats
+                        exit_velo = 80 + float(all_stats.get('slg', 0)) * 25
+                        hr_fb_ratio = min(0.5, hr_per_pa * 8)
+                        barrel_pct = min(0.20, hr_per_pa * 3 + float(all_stats.get('slg', 0)) / 10)
+                        x_iso = iso * 0.9 + barrel_pct * 0.05
+
                         season_data = {
                             'player_id': player_id,
                             'player_name': player_name,
@@ -303,14 +312,14 @@ def fetch_player_stats(player_names, days_back=10):
                             'iso': iso,
                             'hr_per_pa': hr_per_pa,
                             'hr_per_game': hr_per_game,
-                            # Default values for missing advanced metrics
+                            # Default values for missing advanced metrics but with simple estimates
                             'pull_pct': 0.40, 'fb_pct': 0.35, 'hard_pct': 0.30,
-                            'barrel_pct': 0.05, 'exit_velo': 88.0, 'launch_angle': 12.0,
-                            'hard_hit_pct': 0.30, 'hr_fb_ratio': 0.15,
+                            'barrel_pct': barrel_pct, 'exit_velo': exit_velo, 'launch_angle': 12.0,
+                            'hard_hit_pct': 0.30, 'hr_fb_ratio': hr_fb_ratio,
                             'vs_fastball': 1.0, 'vs_breaking': 1.0, 'vs_offspeed': 1.0,
                             'home_factor': 1.0, 'road_factor': 1.0,
                             'hot_cold_streak': 1.0, 'streak_duration': 0,
-                            'batter_history': {}, 'xwOBA': 0.320, 'xISO': 0.150,
+                            'batter_history': {}, 'xwOBA': 0.320, 'xISO': x_iso,
                             'is_simulated': False, 'bats': 'Unknown'
                         }
                         
