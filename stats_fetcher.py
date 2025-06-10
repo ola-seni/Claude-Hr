@@ -180,10 +180,14 @@ def aggregate_recent_batting_stats(game_stats_list, games_played, player_name):
     else:
         hot_cold_streak = 1.0  # Normal
     
-    # Determine advanced metrics
-    exit_velo, hr_fb_ratio, barrel_pct, x_iso = estimate_advanced_metrics(
-        player_name, slg, hr_per_pa, iso
-    )
+
+    # Approximate advanced metrics from basic stats so values vary
+    exit_velo = 80 + slg * 25
+    hr_fb_ratio = min(0.5, hr_per_pa * 8)
+    barrel_pct = min(0.20, hr_per_pa * 3 + slg / 10)
+    x_iso = iso * 0.9 + barrel_pct * 0.05
+ main
+
 
     return {
         'games': games_played,
@@ -331,12 +335,13 @@ def fetch_player_stats(player_names, days_back=10):
                             iso = hr_per_pa = hr_per_game = 0
                         
                         # Season stats
-                        exit_velo, hr_fb_ratio, barrel_pct, x_iso = estimate_advanced_metrics(
-                            player_name,
-                            float(all_stats.get('slg', 0)),
-                            hr_per_pa,
-                            iso,
-                        )
+
+                        exit_velo = 80 + float(all_stats.get('slg', 0)) * 25
+                        hr_fb_ratio = min(0.5, hr_per_pa * 8)
+                        barrel_pct = min(0.20, hr_per_pa * 3 + float(all_stats.get('slg', 0)) / 10)
+                        x_iso = iso * 0.9 + barrel_pct * 0.05
+ main
+
 
                         season_data = {
                             'player_id': player_id,
