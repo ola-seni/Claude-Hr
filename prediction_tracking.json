@@ -1,0 +1,938 @@
+{
+  "predictions": {
+    "2025-05-27": {
+      "locks": [
+        {
+          "player": "Corbin Carroll",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-27",
+          "probability": 0.03472015512711196,
+          "hit_hr": null
+        },
+        {
+          "player": "Matthew Lugo",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-27",
+          "probability": 0.03450236397322208,
+          "hit_hr": null
+        }
+      ],
+      "hot_picks": [
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-27",
+          "probability": 0.03441262907832823,
+          "hit_hr": null
+        },
+        {
+          "player": "Eugenio Suarez",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-27",
+          "probability": 0.034352245276837785,
+          "hit_hr": null
+        },
+        {
+          "player": "Taylor Ward",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-27",
+          "probability": 0.034024973346800116,
+          "hit_hr": null
+        }
+      ],
+      "sleepers": [
+        {
+          "player": "Zach Neto",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-27",
+          "probability": 0.03393979868245922,
+          "hit_hr": null
+        },
+        {
+          "player": "Alek Thomas",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-27",
+          "probability": 0.03377891819969497,
+          "hit_hr": null
+        },
+        {
+          "player": "Trent Grisham",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-27",
+          "probability": 0.03372383619889594,
+          "hit_hr": null
+        },
+        {
+          "player": "Chris Taylor",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-27",
+          "probability": 0.03356037875220552,
+          "hit_hr": null
+        },
+        {
+          "player": "Jordan Lawlar",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-27",
+          "probability": 0.033540416880663865,
+          "hit_hr": null
+        }
+      ],
+      "verified": false
+    },
+    "2025-05-28": {
+      "locks": [
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03451729487179487,
+          "hit_hr": false
+        },
+        {
+          "player": "Kody Clemens",
+          "team": "MIN",
+          "opponent": "TB",
+          "game_id": "TB_MIN_2025-05-28",
+          "probability": 0.0342741323076923,
+          "hit_hr": false
+        },
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03507979487179487,
+          "hit_hr": false
+        },
+        {
+          "player": "Matthew Lugo",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.03414368426907817,
+          "hit_hr": false
+        },
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03445735487179487,
+          "hit_hr": false
+        },
+        {
+          "player": "Corbin Carroll",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-28",
+          "probability": 0.03440908001331685,
+          "hit_hr": false
+        },
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03498064353067487,
+          "hit_hr": false
+        },
+        {
+          "player": "Matthew Lugo",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.034290279630578166,
+          "hit_hr": false
+        },
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03457890764707487,
+          "hit_hr": false
+        },
+        {
+          "player": "Corbin Carroll",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-28",
+          "probability": 0.034169728784406855,
+          "hit_hr": false
+        },
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.03417451514877456,
+          "hit_hr": false
+        },
+        {
+          "player": "Daulton Varsho",
+          "team": "TOR",
+          "opponent": "TEX",
+          "game_id": "TEX_TOR_2025-05-28",
+          "probability": 0.03415463656363636,
+          "hit_hr": false
+        }
+      ],
+      "hot_picks": [
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.03422956126408337,
+          "hit_hr": false
+        },
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "ATL",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.034132107961165045,
+          "hit_hr": false
+        },
+        {
+          "player": "Carson Kelly",
+          "team": "CHC",
+          "opponent": "COL",
+          "game_id": "CHC_COL_2025-05-28",
+          "probability": 0.03401059859897851,
+          "hit_hr": false
+        },
+        {
+          "player": "Kody Clemens",
+          "team": "MIN",
+          "opponent": "TB",
+          "game_id": "TB_MIN_2025-05-28",
+          "probability": 0.034066232307692304,
+          "hit_hr": false
+        },
+        {
+          "player": "Corbin Carroll",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-28",
+          "probability": 0.034057734305316854,
+          "hit_hr": false
+        },
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.03405440841928337,
+          "hit_hr": false
+        },
+        {
+          "player": "Matthew Lugo",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.03433388105532816,
+          "hit_hr": false
+        },
+        {
+          "player": "Shohei Ohtani",
+          "team": "LAD",
+          "opponent": "CLE",
+          "game_id": "CLE_LAD_2025-05-28",
+          "probability": 0.034047104343805715,
+          "hit_hr": false
+        },
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.03404532080028456,
+          "hit_hr": false
+        },
+        {
+          "player": "Logan Davidson",
+          "team": "OAK",
+          "opponent": "HOU",
+          "game_id": "HOU_OAK_2025-05-28",
+          "probability": 0.034061658482157024,
+          "hit_hr": false
+        },
+        {
+          "player": "Corbin Carroll",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-28",
+          "probability": 0.03405726701631685,
+          "hit_hr": false
+        },
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.033978859375534555,
+          "hit_hr": false
+        },
+        {
+          "player": "Carson Kelly",
+          "team": "CHC",
+          "opponent": "COL",
+          "game_id": "CHC_COL_2025-05-28",
+          "probability": 0.03402324583097851,
+          "hit_hr": false
+        },
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.033963554106034556,
+          "hit_hr": false
+        },
+        {
+          "player": "Kody Clemens",
+          "team": "MIN",
+          "opponent": "TB",
+          "game_id": "TB_MIN_2025-05-28",
+          "probability": 0.033940952307692306,
+          "hit_hr": false
+        },
+        {
+          "player": "Matthew Lugo",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.034038815403818166,
+          "hit_hr": false
+        },
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.03402468627085937,
+          "hit_hr": false
+        },
+        {
+          "player": "Jorge Polanco",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.033832172418045516,
+          "hit_hr": false
+        }
+      ],
+      "sleepers": [
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.033990829542034556,
+          "hit_hr": false
+        },
+        {
+          "player": "Corbin Carroll",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-28",
+          "probability": 0.033962627237316856,
+          "hit_hr": false
+        },
+        {
+          "player": "Ivan Herrera",
+          "team": "STL",
+          "opponent": "BAL",
+          "game_id": "BAL_STL_2025-05-28",
+          "probability": 0.03393878420538247,
+          "hit_hr": false
+        },
+        {
+          "player": "Shohei Ohtani",
+          "team": "LAD",
+          "opponent": "CLE",
+          "game_id": "CLE_LAD_2025-05-28",
+          "probability": 0.033791445504685706,
+          "hit_hr": false
+        },
+        {
+          "player": "Matthew Lugo",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.03378384979707816,
+          "hit_hr": false
+        },
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.033977704014034556,
+          "hit_hr": false
+        },
+        {
+          "player": "Ketel Marte",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-28",
+          "probability": 0.03382620478150733,
+          "hit_hr": false
+        },
+        {
+          "player": "Carson Kelly",
+          "team": "CHC",
+          "opponent": "COL",
+          "game_id": "CHC_COL_2025-05-28",
+          "probability": 0.033816119309698515,
+          "hit_hr": false
+        },
+        {
+          "player": "Shohei Ohtani",
+          "team": "LAD",
+          "opponent": "CLE",
+          "game_id": "CLE_LAD_2025-05-28",
+          "probability": 0.033670220144365715,
+          "hit_hr": false
+        },
+        {
+          "player": "Daulton Varsho",
+          "team": "TOR",
+          "opponent": "TEX",
+          "game_id": "TEX_TOR_2025-05-28",
+          "probability": 0.033638321243536363,
+          "hit_hr": false
+        },
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "ATL",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03395282796116505,
+          "hit_hr": false
+        },
+        {
+          "player": "Carson Kelly",
+          "team": "CHC",
+          "opponent": "COL",
+          "game_id": "CHC_COL_2025-05-28",
+          "probability": 0.033911412202498506,
+          "hit_hr": false
+        },
+        {
+          "player": "Kody Clemens",
+          "team": "MIN",
+          "opponent": "TB",
+          "game_id": "TB_MIN_2025-05-28",
+          "probability": 0.0338766923076923,
+          "hit_hr": false
+        },
+        {
+          "player": "Seiya Suzuki",
+          "team": "CHC",
+          "opponent": "COL",
+          "game_id": "CHC_COL_2025-05-28",
+          "probability": 0.03386151323510721,
+          "hit_hr": false
+        },
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.03382670566888337,
+          "hit_hr": false
+        },
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "ATL",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03397841662004505,
+          "hit_hr": false
+        },
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.03395056659208337,
+          "hit_hr": false
+        },
+        {
+          "player": "Daulton Varsho",
+          "team": "TOR",
+          "opponent": "TEX",
+          "game_id": "TEX_TOR_2025-05-28",
+          "probability": 0.03389103881083636,
+          "hit_hr": false
+        },
+        {
+          "player": "Shohei Ohtani",
+          "team": "LAD",
+          "opponent": "CLE",
+          "game_id": "CLE_LAD_2025-05-28",
+          "probability": 0.03379545782132571,
+          "hit_hr": false
+        },
+        {
+          "player": "Kody Clemens",
+          "team": "MIN",
+          "opponent": "TB",
+          "game_id": "TB_MIN_2025-05-28",
+          "probability": 0.03376005230769231,
+          "hit_hr": false
+        },
+        {
+          "player": "Ketel Marte",
+          "team": "ARI",
+          "opponent": "PIT",
+          "game_id": "ARI_PIT_2025-05-28",
+          "probability": 0.03392955926059733,
+          "hit_hr": false
+        },
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.033914028329083364,
+          "hit_hr": false
+        },
+        {
+          "player": "Daulton Varsho",
+          "team": "TOR",
+          "opponent": "TEX",
+          "game_id": "TEX_TOR_2025-05-28",
+          "probability": 0.033902129935636356,
+          "hit_hr": false
+        },
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "ATL",
+          "game_id": "PHI_ATL_2025-05-28",
+          "probability": 0.03389474073644504,
+          "hit_hr": false
+        },
+        {
+          "player": "Matthew Lugo",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.03383271436107817,
+          "hit_hr": false
+        },
+        {
+          "player": "Taylor Ward",
+          "team": "LAA",
+          "opponent": "NYY",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.03373231097903941,
+          "hit_hr": false
+        },
+        {
+          "player": "Seiya Suzuki",
+          "team": "CHC",
+          "opponent": "COL",
+          "game_id": "CHC_COL_2025-05-28",
+          "probability": 0.033713268006197124,
+          "hit_hr": false
+        },
+        {
+          "player": "Trent Grisham",
+          "team": "NYY",
+          "opponent": "LAA",
+          "game_id": "LAA_NYY_2025-05-28",
+          "probability": 0.033695860377419944,
+          "hit_hr": false
+        },
+        {
+          "player": "Carson Kelly",
+          "team": "CHC",
+          "opponent": "COL",
+          "game_id": "CHC_COL_2025-05-28",
+          "probability": 0.03364022697358843,
+          "hit_hr": false
+        },
+        {
+          "player": "James Wood",
+          "team": "WSH",
+          "opponent": "SEA",
+          "game_id": "SEA_WSH_2025-05-28",
+          "probability": 0.03356459242956081,
+          "hit_hr": false
+        }
+      ],
+      "verified": true
+    },
+    "2025-05-29": {
+      "locks": [
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-29",
+          "probability": 0.03459379487179487,
+          "hit_hr": null
+        },
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-29",
+          "probability": 0.03459379487179487,
+          "hit_hr": null
+        },
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-29",
+          "probability": 0.03498021325651487,
+          "hit_hr": null
+        },
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "ATL",
+          "game_id": "PHI_ATL_2025-05-29",
+          "probability": 0.03401903958063639,
+          "hit_hr": null
+        }
+      ],
+      "hot_picks": [
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "ATL",
+          "game_id": "PHI_ATL_2025-05-29",
+          "probability": 0.03376538235294118,
+          "hit_hr": null
+        },
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "ATL",
+          "game_id": "PHI_ATL_2025-05-29",
+          "probability": 0.03376538235294118,
+          "hit_hr": null
+        },
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-29",
+          "probability": 0.033729139747502926,
+          "hit_hr": null
+        },
+        {
+          "player": "Sean Murphy",
+          "team": "ATL",
+          "opponent": "PHI",
+          "game_id": "PHI_ATL_2025-05-29",
+          "probability": 0.03397578565961565,
+          "hit_hr": null
+        },
+        {
+          "player": "Victor Caratini",
+          "team": "HOU",
+          "opponent": "TB",
+          "game_id": "HOU_TB_2025-05-29",
+          "probability": 0.033736395927349,
+          "hit_hr": null
+        },
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "WSH",
+          "game_id": "SEA_WSH_2025-05-29",
+          "probability": 0.03371961606046805,
+          "hit_hr": null
+        }
+      ],
+      "sleepers": [
+        {
+          "player": "Josh Lowe",
+          "team": "TB",
+          "opponent": "HOU",
+          "game_id": "HOU_TB_2025-05-29",
+          "probability": 0.033518291305692303,
+          "hit_hr": null
+        },
+        {
+          "player": "James Wood",
+          "team": "WSH",
+          "opponent": "SEA",
+          "game_id": "SEA_WSH_2025-05-29",
+          "probability": 0.03350873741149213,
+          "hit_hr": null
+        },
+        {
+          "player": "Junior Caminero",
+          "team": "TB",
+          "opponent": "HOU",
+          "game_id": "HOU_TB_2025-05-29",
+          "probability": 0.03339631044444829,
+          "hit_hr": null
+        },
+        {
+          "player": "Daulton Varsho",
+          "team": "TOR",
+          "opponent": "OAK",
+          "game_id": "TOR_OAK_2025-05-29",
+          "probability": 0.03337632269399078,
+          "hit_hr": null
+        },
+        {
+          "player": "Jonathan Aranda",
+          "team": "TB",
+          "opponent": "HOU",
+          "game_id": "HOU_TB_2025-05-29",
+          "probability": 0.0333486801945812,
+          "hit_hr": null
+        },
+        {
+          "player": "James Wood",
+          "team": "WSH",
+          "opponent": "SEA",
+          "game_id": "SEA_WSH_2025-05-29",
+          "probability": 0.03369253372445725,
+          "hit_hr": null
+        },
+        {
+          "player": "Jonathan Aranda",
+          "team": "TB",
+          "opponent": "HOU",
+          "game_id": "HOU_TB_2025-05-29",
+          "probability": 0.0336289032765812,
+          "hit_hr": null
+        },
+        {
+          "player": "Chandler Simpson",
+          "team": "TB",
+          "opponent": "HOU",
+          "game_id": "HOU_TB_2025-05-29",
+          "probability": 0.03362193438769231,
+          "hit_hr": null
+        },
+        {
+          "player": "Junior Caminero",
+          "team": "TB",
+          "opponent": "HOU",
+          "game_id": "HOU_TB_2025-05-29",
+          "probability": 0.033598233526448286,
+          "hit_hr": null
+        },
+        {
+          "player": "Daulton Varsho",
+          "team": "TOR",
+          "opponent": "OAK",
+          "game_id": "TOR_OAK_2025-05-29",
+          "probability": 0.03358828739099078,
+          "hit_hr": null
+        }
+      ],
+      "verified": false
+    },
+    "2025-06-03": {
+      "locks": [
+        {
+          "player": "Kyle Schwarber",
+          "team": "PHI",
+          "opponent": "TOR",
+          "game_id": "TOR_PHI_2025-06-03",
+          "probability": 0.03456296500405242,
+          "hit_hr": null
+        },
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "CLE",
+          "game_id": "NYY_CLE_2025-06-03",
+          "probability": 0.03455752596825134,
+          "hit_hr": null
+        }
+      ],
+      "hot_picks": [
+        {
+          "player": "Ronald Acuna",
+          "team": "ATL",
+          "opponent": "ARI",
+          "game_id": "ATL_ARI_2025-06-03",
+          "probability": 0.03442576490221021,
+          "hit_hr": null
+        },
+        {
+          "player": "Ben Rice",
+          "team": "NYY",
+          "opponent": "CLE",
+          "game_id": "NYY_CLE_2025-06-03",
+          "probability": 0.034252707240774304,
+          "hit_hr": null
+        },
+        {
+          "player": "Shohei Ohtani",
+          "team": "LAD",
+          "opponent": "NYM",
+          "game_id": "LAD_NYM_2025-06-03",
+          "probability": 0.03410267336086466,
+          "hit_hr": null
+        }
+      ],
+      "sleepers": [
+        {
+          "player": "Cal Raleigh",
+          "team": "SEA",
+          "opponent": "BAL",
+          "game_id": "SEA_BAL_2025-06-03",
+          "probability": 0.03402312634363636,
+          "hit_hr": null
+        },
+        {
+          "player": "Corbin Carroll",
+          "team": "ARI",
+          "opponent": "ATL",
+          "game_id": "ATL_ARI_2025-06-03",
+          "probability": 0.03401357977443609,
+          "hit_hr": null
+        },
+        {
+          "player": "Jose Ramirez",
+          "team": "CLE",
+          "opponent": "NYY",
+          "game_id": "NYY_CLE_2025-06-03",
+          "probability": 0.03395272504357899,
+          "hit_hr": null
+        },
+        {
+          "player": "Will Benson",
+          "team": "CIN",
+          "opponent": "MIL",
+          "game_id": "CIN_MIL_2025-06-03",
+          "probability": 0.03394114910820513,
+          "hit_hr": null
+        },
+        {
+          "player": "Trent Grisham",
+          "team": "NYY",
+          "opponent": "CLE",
+          "game_id": "NYY_CLE_2025-06-03",
+          "probability": 0.03391083471071819,
+          "hit_hr": null
+        }
+      ],
+      "verified": false
+    },
+    "2025-06-12": {
+      "locks": [
+        {
+          "player": "Aaron Judge",
+          "team": "NYY",
+          "opponent": "KC",
+          "game_id": "KC_NYY_2025-06-12",
+          "probability": 0.03389466744730098,
+          "hit_hr": null
+        },
+        {
+          "player": "Hunter Goodman",
+          "team": "COL",
+          "opponent": "SF",
+          "game_id": "COL_SF_2025-06-12",
+          "probability": 0.033517267701000206,
+          "hit_hr": null
+        }
+      ],
+      "hot_picks": [
+        {
+          "player": "Seiya Suzuki",
+          "team": "CHC",
+          "opponent": "PIT",
+          "game_id": "CHC_PIT_2025-06-12",
+          "probability": 0.03349730805874048,
+          "hit_hr": null
+        },
+        {
+          "player": "Jacob Melton",
+          "team": "HOU",
+          "opponent": "CWS",
+          "game_id": "HOU_CWS_2025-06-12",
+          "probability": 0.033452143677689984,
+          "hit_hr": null
+        },
+        {
+          "player": "Pete Alonso",
+          "team": "NYM",
+          "opponent": "WSH",
+          "game_id": "NYM_WSH_2025-06-12",
+          "probability": 0.03344206183900152,
+          "hit_hr": null
+        }
+      ],
+      "sleepers": [
+        {
+          "player": "Austin Slater",
+          "team": "CWS",
+          "opponent": "HOU",
+          "game_id": "HOU_CWS_2025-06-12",
+          "probability": 0.03342887741662915,
+          "hit_hr": null
+        },
+        {
+          "player": "Isaac Paredes",
+          "team": "HOU",
+          "opponent": "CWS",
+          "game_id": "HOU_CWS_2025-06-12",
+          "probability": 0.03337672034435665,
+          "hit_hr": null
+        },
+        {
+          "player": "Kyle Tucker",
+          "team": "CHC",
+          "opponent": "PIT",
+          "game_id": "CHC_PIT_2025-06-12",
+          "probability": 0.033340689797266856,
+          "hit_hr": null
+        },
+        {
+          "player": "Cam Smith",
+          "team": "HOU",
+          "opponent": "CWS",
+          "game_id": "HOU_CWS_2025-06-12",
+          "probability": 0.03333059947220689,
+          "hit_hr": null
+        },
+        {
+          "player": "Andrew Knizner",
+          "team": "SF",
+          "opponent": "COL",
+          "game_id": "COL_SF_2025-06-12",
+          "probability": 0.03331156116203768,
+          "hit_hr": null
+        }
+      ],
+      "verified": false
+    }
+  },
+  "accuracy": {
+    "total_predictions": 60,
+    "correct_predictions": 0,
+    "locks_accuracy": 0.0,
+    "hot_picks_accuracy": 0.0,
+    "sleepers_accuracy": 0.0,
+    "overall_accuracy": 0.0
+  },
+  "last_updated": "2025-06-12 07:44:21"
+}

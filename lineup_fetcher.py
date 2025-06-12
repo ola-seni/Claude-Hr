@@ -2,10 +2,36 @@ import logging
 import statsapi
 import numpy as np
 import datetime
-from rotowire_lineups import fetch_rotowire_expected_lineups, convert_rotowire_data_to_mlb_format
+from enhanced_rotowire_lineups import fetch_rotowire_expected_lineups_enhanced as fetch_rotowire_expected_lineups
 
 # Configure logging
 logger = logging.getLogger('MLB-HR-Predictor')
+
+def convert_rotowire_data_to_mlb_format(rotowire_lineups, date_str=None):
+    """Convert Rotowire lineup data to the format used by our MLB HR Predictor."""
+    if date_str is None:
+        today = datetime.datetime.now()
+        date_str = today.strftime("%Y-%m-%d")
+    
+    # Initialize results
+    lineups = {}
+    probable_pitchers = {}
+    
+    # Process each game
+    for game_id, game_data in rotowire_lineups.items():
+        # Extract lineups
+        lineups[game_id] = {
+            'home': game_data.get('home', []),
+            'away': game_data.get('away', [])
+        }
+        
+        # Extract probable pitchers
+        probable_pitchers[game_id] = {
+            'home': game_data.get('home_pitcher', 'TBD'),
+            'away': game_data.get('away_pitcher', 'TBD')
+        }
+    
+    return lineups, probable_pitchers
 
 def get_alternative_team_codes(team_code):
     """Get alternative team codes that might be used by different sources"""
@@ -46,9 +72,7 @@ def fuzzy_team_match(code1, code2):
     return any(a1 == a2 for a1 in alt1 for a2 in alt2)
 
 def find_rotowire_match(mlb_home_team, mlb_away_team, rotowire_data):
-    """
-    Enhanced function to find Rotowire game matches using multiple strategies
-    """
+    """Enhanced function to find Rotowire game matches using multiple strategies"""
     # Strategy 1: Try exact game ID match
     game_id = f"{mlb_home_team}_{mlb_away_team}_{datetime.datetime.now().strftime('%Y-%m-%d')}"
     if game_id in rotowire_data:
@@ -109,14 +133,14 @@ def fetch_lineups_and_pitchers(games, early_run=False):
     lineups = {}
     probable_pitchers = {}
     
-    # Get Rotowire data first
+    # Get Rotowire data first using ENHANCED scraper
     rotowire_data = None
     try:
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
         rotowire_data = fetch_rotowire_expected_lineups(today_str)
-        logger.info(f"Fetched {len(rotowire_data)} games from Rotowire")
+        logger.info(f"✅ Enhanced Rotowire scraper fetched {len(rotowire_data)} games")
     except Exception as e:
-        logger.warning(f"Failed to fetch Rotowire data: {e}")
+        logger.warning(f"❌ Enhanced Rotowire scraper failed: {e}")
     
     # Process each game from MLB API
     for _, game in games.iterrows():
@@ -165,9 +189,9 @@ def fetch_lineups_and_pitchers(games, early_run=False):
                     if away_pitcher == "TBD" and 'away_pitcher' in rotowire_match:
                         away_pitcher = rotowire_match['away_pitcher']
                         
-                    logger.info(f"Found Rotowire match for {game_id} using {match_type}")
+                    logger.info(f"✅ Enhanced Rotowire match for {game_id} using {match_type}")
                 else:
-                    logger.warning(f"No Rotowire match found for {game_id} ({away_team} @ {home_team})")
+                    logger.warning(f"❌ No Enhanced Rotowire match found for {game_id} ({away_team} @ {home_team})")
             
             # STEP 3: Try MLB API for confirmed lineups (midday runs)
             if not early_run and (not home_lineup or not away_lineup):
@@ -236,11 +260,11 @@ def fetch_lineups_and_pitchers(games, early_run=False):
             lineups[game_id] = {'home': [], 'away': []}
             probable_pitchers[game_id] = {'home': 'TBD', 'away': 'TBD'}
     
-    # STEP 4: Add any Rotowire-only games that MLB API didn't have
+    # STEP 4: Add any Enhanced Rotowire-only games that MLB API didn't have
     if rotowire_data:
         for roto_game_id, roto_data in rotowire_data.items():
             if roto_game_id not in lineups and len(roto_data.get('home', [])) > 0:
-                logger.info(f"Adding Rotowire-only game: {roto_game_id}")
+                logger.info(f"Adding Enhanced Rotowire-only game: {roto_game_id}")
                 lineups[roto_game_id] = {
                     'home': roto_data.get('home', []),
                     'away': roto_data.get('away', [])
@@ -250,6 +274,6 @@ def fetch_lineups_and_pitchers(games, early_run=False):
                     'away': roto_data.get('away_pitcher', 'TBD')
                 }
     
-    logger.info(f"FINAL RESULT: {len(lineups)} games with lineups, {len(probable_pitchers)} games with pitchers")
+    logger.info(f"🎉 ENHANCED RESULT: {len(lineups)} games with lineups, {len(probable_pitchers)} games with pitchers")
     
     return lineups, probable_pitchers

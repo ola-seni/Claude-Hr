@@ -17,6 +17,8 @@ def fetch_recent_player_performance(player_id, player_name, days_back=21):
             # REMOVED: season=2025 - this was causing the error!
         )
 
+        # ADD THIS DEBUG
+        logger.info(f"DEBUG: Game logs response for {player_name}: {len(game_logs_response.get('stats', []))} stat groups")
         
         if 'stats' not in game_logs_response:
             logger.debug(f"No game logs available for {player_name}")
@@ -41,9 +43,7 @@ def fetch_recent_player_performance(player_id, player_name, days_back=21):
             return None
             
         # Aggregate recent stats
-        return aggregate_recent_batting_stats(
-            recent_games, len(recent_games), player_name
-        )
+        return aggregate_recent_batting_stats(recent_games, len(recent_games))
         
     except Exception as e:
         logger.error(f"Error fetching recent performance for {player_name}: {e}")
@@ -66,7 +66,7 @@ def fetch_recent_pitcher_performance(pitcher_id, pitcher_name, days_back=10):
             return None
             
         # Calculate date cutoff
-        cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+        cutoff_date = (datetime.datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
         
         # Process game logs
         recent_games = []
@@ -90,47 +90,7 @@ def fetch_recent_pitcher_performance(pitcher_id, pitcher_name, days_back=10):
         logger.error(f"Error fetching recent pitching performance for {pitcher_name}: {e}")
         return None
 
-def estimate_advanced_metrics(player_name, slg=0.0, hr_per_pa=0.0, iso=0.0):
-    """Return simple deterministic estimates for advanced metrics.
-
-    When Statcast data is unavailable or slugging/HR rates are zero, we
-    derive fallback values from the player's name so metrics are unique per
-    player.  This avoids identical numbers across the dataset when API data
-    is missing.
-    """
-
-    name_seed = sum(ord(c) for c in player_name)
-
-    exit_velo = 80 + slg * 25
-    if exit_velo == 80:
-        # When no slugging info, derive a base from the player's name
-        exit_velo = 87 + (name_seed % 6)  # 87-92 mph
-    else:
-        # Add a small deterministic bump so players with identical stats differ
-        exit_velo += (name_seed % 7) / 10.0  # ±0-0.6 mph variation
-
-    hr_fb_ratio = min(0.5, hr_per_pa * 8)
-    if hr_fb_ratio == 0:
-        hr_fb_ratio = 0.10 + (name_seed % 10) / 100.0
-    else:
-        hr_fb_ratio += (name_seed % 10) / 1000.0
-
-    barrel_pct = min(0.20, hr_per_pa * 3 + slg / 10)
-    if barrel_pct == 0:
-        barrel_pct = 0.05 + (name_seed % 10) / 100.0
-    else:
-        barrel_pct += (name_seed % 10) / 1000.0
-
-    x_iso = iso * 0.9 + barrel_pct * 0.05
-    if iso == 0 and barrel_pct == 0:
-        x_iso = 0.15 + (name_seed % 5) / 100.0
-    else:
-        x_iso += (name_seed % 5) / 1000.0
-
-    return exit_velo, hr_fb_ratio, barrel_pct, x_iso
-
-
-def aggregate_recent_batting_stats(game_stats_list, games_played, player_name):
+def aggregate_recent_batting_stats(game_stats_list, games_played):
     """Aggregate batting stats from multiple recent games"""
     totals = {
         'games': games_played,
@@ -180,15 +140,6 @@ def aggregate_recent_batting_stats(game_stats_list, games_played, player_name):
     else:
         hot_cold_streak = 1.0  # Normal
     
-
-    # Approximate advanced metrics from basic stats so values vary
-    exit_velo = 80 + slg * 25
-    hr_fb_ratio = min(0.5, hr_per_pa * 8)
-    barrel_pct = min(0.20, hr_per_pa * 3 + slg / 10)
-    x_iso = iso * 0.9 + barrel_pct * 0.05
- main
-
-
     return {
         'games': games_played,
         'pa': totals['pa'],
@@ -206,22 +157,22 @@ def aggregate_recent_batting_stats(game_stats_list, games_played, player_name):
         'hr_per_game': hr_per_game,
         'hot_cold_streak': hot_cold_streak,
         'streak_duration': games_played,
-        # Simple estimates for advanced metrics (would need Statcast data for real values)
-        'barrel_pct': barrel_pct,
-        'exit_velo': exit_velo,
+        # Default values for advanced metrics (would need Statcast data for real values)
+        'barrel_pct': 0.05,
+        'exit_velo': 88.0,
         'launch_angle': 12.0,
         'pull_pct': 0.40,
         'fb_pct': 0.35,
         'hard_pct': 0.30,
         'hard_hit_pct': 0.30,
-        'hr_fb_ratio': hr_fb_ratio,
+        'hr_fb_ratio': 0.15,
         'vs_fastball': 1.0,
         'vs_breaking': 1.0,
         'vs_offspeed': 1.0,
         'home_factor': 1.0,
         'road_factor': 1.0,
         'xwOBA': 0.320,
-        'xISO': x_iso,
+        'xISO': 0.150,
         'bats': 'Unknown'
     }
 
@@ -335,14 +286,6 @@ def fetch_player_stats(player_names, days_back=10):
                             iso = hr_per_pa = hr_per_game = 0
                         
                         # Season stats
-
-                        exit_velo = 80 + float(all_stats.get('slg', 0)) * 25
-                        hr_fb_ratio = min(0.5, hr_per_pa * 8)
-                        barrel_pct = min(0.20, hr_per_pa * 3 + float(all_stats.get('slg', 0)) / 10)
-                        x_iso = iso * 0.9 + barrel_pct * 0.05
- main
-
-
                         season_data = {
                             'player_id': player_id,
                             'player_name': player_name,
@@ -360,14 +303,14 @@ def fetch_player_stats(player_names, days_back=10):
                             'iso': iso,
                             'hr_per_pa': hr_per_pa,
                             'hr_per_game': hr_per_game,
-                            # Default values for missing advanced metrics but with simple estimates
+                            # Default values for missing advanced metrics
                             'pull_pct': 0.40, 'fb_pct': 0.35, 'hard_pct': 0.30,
-                            'barrel_pct': barrel_pct, 'exit_velo': exit_velo, 'launch_angle': 12.0,
-                            'hard_hit_pct': 0.30, 'hr_fb_ratio': hr_fb_ratio,
+                            'barrel_pct': 0.05, 'exit_velo': 88.0, 'launch_angle': 12.0,
+                            'hard_hit_pct': 0.30, 'hr_fb_ratio': 0.15,
                             'vs_fastball': 1.0, 'vs_breaking': 1.0, 'vs_offspeed': 1.0,
                             'home_factor': 1.0, 'road_factor': 1.0,
                             'hot_cold_streak': 1.0, 'streak_duration': 0,
-                            'batter_history': {}, 'xwOBA': 0.320, 'xISO': x_iso,
+                            'batter_history': {}, 'xwOBA': 0.320, 'xISO': 0.150,
                             'is_simulated': False, 'bats': 'Unknown'
                         }
                         

@@ -354,61 +354,92 @@ class BaseballSavant:
         search_first = search_parts[0]
         search_last = search_parts[-1]
         
-        # CRITICAL FIX: More precise matching
+        # Step 3: Try matching with different formats
         for name in candidate_names:
-            name_parts = name.lower().split()
-            if len(name_parts) < 2:
-                continue
-                
+            name_lower = name.lower()
+            
             # Handle "Last, First" format in candidate names
             if ',' in name:
                 # "Judge, Aaron" format
-                name_clean = name.replace(',', '').strip()
-                name_parts = name_clean.split()
-                if len(name_parts) >= 2:
-                    cand_last = name_parts[0]  # First part is last name
-                    cand_first = name_parts[1]  # Second part is first name
+                parts = name_lower.split(',')
+                if len(parts) == 2:
+                    cand_last = parts[0].strip()
+                    cand_first = parts[1].strip()
+                    
+                    # Check if both first AND last name match
+                    if search_first == cand_first and search_last == cand_last:
+                        return name
             else:
                 # "Aaron Judge" format  
-                cand_first = name_parts[0]
-                cand_last = name_parts[-1]
-            
-            # PRECISE MATCHING: Both first AND last name must match
-            # This prevents "Aaron Judge" from matching "Nola, Aaron"
-            if (search_first == cand_first and search_last == cand_last):
-                return name
-            
-            # Also try first initial matching (but still require exact last name)
-            if (search_first[0] == cand_first[0] and search_last == cand_last):
-                return name
+                parts = name_lower.split()
+                if len(parts) >= 2:
+                    cand_first = parts[0]
+                    cand_last = parts[-1]
+                    
+                    # Check if both first AND last name match
+                    if search_first == cand_first and search_last == cand_last:
+                        return name
         
-        # Step 3: Handle name variations but maintain precision
+        # Step 4: Try with first initial matching (but still require exact last name)
+        for name in candidate_names:
+            name_lower = name.lower()
+            
+            if ',' in name:
+                parts = name_lower.split(',')
+                if len(parts) == 2:
+                    cand_last = parts[0].strip()
+                    cand_first = parts[1].strip()
+                    
+                    # Check first initial + exact last name
+                    if (len(search_first) > 0 and len(cand_first) > 0 and 
+                        search_first[0] == cand_first[0] and search_last == cand_last):
+                        return name
+            else:
+                parts = name_lower.split()
+                if len(parts) >= 2:
+                    cand_first = parts[0]
+                    cand_last = parts[-1]
+                    
+                    # Check first initial + exact last name
+                    if (len(search_first) > 0 and len(cand_first) > 0 and 
+                        search_first[0] == cand_first[0] and search_last == cand_last):
+                        return name
+        
+        # Step 5: Handle name variations
         name_variations = {
-            'mike': 'michael', 'nick': 'nicholas', 'rob': 'robert', 'alex': 'alexander',
-            'matt': 'matthew', 'chris': 'christopher', 'josh': 'joshua', 'jake': 'jacob'
+            'mike': 'michael', 'nick': 'nicholas', 'rob': 'robert', 
+            'alex': 'alexander', 'matt': 'matthew', 'chris': 'christopher',
+            'josh': 'joshua', 'jake': 'jacob', 'tony': 'anthony'
         }
         
         # Try with name variations
         search_first_var = name_variations.get(search_first, search_first)
+        
         for name in candidate_names:
-            name_parts = name.lower().split()
-            if len(name_parts) < 2:
-                continue
-                
-            if ',' in name:
-                name_clean = name.replace(',', '').strip()
-                name_parts = name_clean.split()
-                if len(name_parts) >= 2:
-                    cand_last = name_parts[0]
-                    cand_first = name_parts[1]
-            else:
-                cand_first = name_parts[0]
-                cand_last = name_parts[-1]
+            name_lower = name.lower()
             
-            # Check with normalized first name BUT exact last name
-            if ((cand_first == search_first_var or name_variations.get(cand_first, '') == search_first) 
-                and cand_last == search_last):
-                return name
+            if ',' in name:
+                parts = name_lower.split(',')
+                if len(parts) == 2:
+                    cand_last = parts[0].strip()
+                    cand_first = parts[1].strip()
+                    
+                    # Check with normalized first name + exact last name
+                    if ((cand_first == search_first_var or 
+                         name_variations.get(cand_first, '') == search_first) 
+                        and cand_last == search_last):
+                        return name
+            else:
+                parts = name_lower.split()
+                if len(parts) >= 2:
+                    cand_first = parts[0]
+                    cand_last = parts[-1]
+                    
+                    # Check with normalized first name + exact last name
+                    if ((cand_first == search_first_var or 
+                         name_variations.get(cand_first, '') == search_first) 
+                        and cand_last == search_last):
+                        return name
         
         # No match found
         return None
