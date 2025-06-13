@@ -81,57 +81,49 @@ TEAM_CODES = {
 
 # Weight factors for HR prediction - rebalanced to maintain proper scaling
 WEIGHTS = {
-    # Core metrics - keep these strong
-    'recent_hr_rate': 0.10,            # Recent 7-10 day HR rate (slightly reduced)
-    'season_hr_rate': 0.07,            # Season HR rate (unchanged - foundational)
-    'ballpark_factor': 0.05,           # Ballpark HR factor (slightly reduced)
-    'pitcher_hr_allowed': 0.06,        # Pitcher HR/9 rate (slightly reduced)
+    # Core metrics - rebalanced for fairness
+    'recent_hr_rate': 0.12,
+    'season_hr_rate': 0.10,
+    'contact_quality': 0.15,       # NEW - major boost for contact hitters!
     
-    # Contact quality metrics - consolidated influence
-    'barrel_pct': 0.05,                # Barrel percentage (reduced)
-    'exit_velocity': 0.04,             # Exit velocity (reduced)
-    'hard_hit_pct': 0.04,              # Hard hit % (reduced)
-    'launch_angle': 0.03,              # Launch angle (reduced)
+    # Power metrics - REDUCED to prevent dominance
+    'slg_factor': 0.08,            # Was higher, now reduced
+    'iso_factor': 0.08,            # Was higher, now reduced  
+    'exit_velo_factor': 0.06,      # Was higher, now reduced
+    'barrel_rate_factor': 0.05,    # Was higher, now reduced
+    'l15_barrel_factor': 0.04,     # Was higher, now reduced
+    'l15_ev_factor': 0.04,         # Was higher, now reduced
+    'hr_pct_factor': 0.06,         # Was higher, now reduced
     
-    # Batted ball direction metrics - consolidated
-    'pull_pct': 0.04,                  # Pull percentage (reduced)
-    'fly_ball_rate': 0.02,             # Fly ball rate (unchanged - already small)
-    'hr_fb_ratio': 0.03,               # HR to fly ball ratio (unchanged)
+    # Situational factors - increased importance
+    'ballpark_factor': 0.10,
+    'context_bonuses': 0.08,       # NEW
+    'platoon_advantage': 0.08,
+    'weather_factor': 0.06,
+    'pitcher_matchup': 0.08,
     
-    # Matchup factors - slightly reduced
-    'platoon_advantage': 0.03,         # Platoon advantage (unchanged)
-    'vs_pitch_type': 0.02,             # Batter vs pitch type (reduced)
-    'pitcher_gb_fb_ratio': 0.02,       # Pitcher ground ball to fly ball ratio (reduced)
-    'pitcher_workload': 0.02,          # Pitcher workload/fatigue (unchanged)
-    'batter_vs_pitcher': 0.03,         # Historical matchup (reduced)
-    
-    # Contextual factors
-    'weather_factor': 0.03,            # Weather conditions (reduced)
-    'home_away_split': 0.02,           # Home/Away splits (reduced)
-    'hot_cold_streak': 0.04,           # Hot/cold streak (reduced)
-    
-    # Advanced metrics
-    'xISO': 0.06,                      # Expected Isolated Power (slightly reduced)
-    'xwOBA': 0.05,                     # Expected wOBA (reduced)
-    
-    # New threshold-based factors
-    'slg_factor': 0.05,                # SLG threshold (reduced)
-    'iso_factor': 0.05,                # ISO threshold (reduced)
-    'l15_barrel_factor': 0.04,         # Last 15 days barrel% threshold (reduced)
-    'l15_ev_factor': 0.04,             # Last 15 days exit velo threshold (reduced)
-    'barrel_rate_factor': 0.04,        # Barrel rate threshold (reduced)
-    'exit_velo_factor': 0.04,          # Exit velo threshold (reduced)
-    'hr_pct_factor': 0.04,             # HR% threshold (reduced)
-    
-    # New complex metrics
-    'hard_hit_distance': 0.05,         # Hard hit distance factor
-    'pitch_specific': 0.04,            # Pitch-specific performance
-    'spray_angle': 0.04,               # Spray angle/pull vs oppo power
-    'zone_contact': 0.04,              # Zone location contact quality
-    'park_specific': 0.04,             # Park-specific performance
-    
-    # NEW: Form trend factor
-    'form_trend': 0.05                 # Recent batted ball trend
+    # Existing factors - kept similar weights
+    'barrel_pct': 0.08,
+    'pitcher_hr_allowed': 0.08,
+    'fly_ball_rate': 0.05,
+    'pull_pct': 0.04,
+    'hard_hit_pct': 0.05,
+    'launch_angle': 0.04,
+    'pitcher_gb_fb_ratio': 0.03,
+    'hr_fb_ratio': 0.06,
+    'vs_pitch_type': 0.04,
+    'pitcher_workload': 0.03,
+    'batter_vs_pitcher': 0.03,
+    'home_away_split': 0.03,
+    'hot_cold_streak': 0.04,
+    'xISO': 0.05,
+    'xwOBA': 0.04,
+    'hard_hit_distance': 0.03,
+    'pitch_specific': 0.03,
+    'spray_angle': 0.03,
+    'zone_contact': 0.03,
+    'park_specific': 0.04,
+    'form_trend': 0.03
 }
 
 class MLBHomeRunPredictor:
@@ -1020,61 +1012,83 @@ class MLBHomeRunPredictor:
             logger.error(f"Error calculating xwOBA for {batter}: {e}")
             return 0.320  # Return league average as fallback
             
-    def calculate_xISO(self, batter):
-        """Calculate expected ISO (Isolated Power) based on batted ball metrics"""
+    def calculate_unbiased_xiso(batter_stats):
+        """Calculate xISO that doesn't unfairly penalize contact hitters"""
         try:
-            # Get relevant metrics
-            exit_velo = self.player_stats.get(batter, {}).get('exit_velo', 0)
-            launch_angle = self.player_stats.get(batter, {}).get('launch_angle', 0)
-            barrel_pct = self.player_stats.get(batter, {}).get('barrel_pct', 0)
-            hard_hit_pct = self.player_stats.get(batter, {}).get('hard_hit_pct', 0)
-            pull_pct = self.player_stats.get(batter, {}).get('pull_pct', 0)
-            hr_fb_ratio = self.player_stats.get(batter, {}).get('hr_fb_ratio', 0)
+            # Get player metrics
+            exit_velo = batter_stats.get('exit_velo', 89)
+            launch_angle = batter_stats.get('launch_angle', 12)
+            barrel_pct = batter_stats.get('barrel_pct', 0.06)
+            hard_hit_pct = batter_stats.get('hard_hit_pct', 0.35)
+            pull_pct = batter_stats.get('pull_pct', 0.40)
+            hr_fb_ratio = batter_stats.get('hr_fb_ratio', 0.12)
+            avg = batter_stats.get('avg', 0.250)  # NEW - contact quality
+            player_type = batter_stats.get('player_type', 'average')
             
-            # In a real implementation, we would use actual Statcast data and models
-            # Here we'll simulate xISO based on our available metrics
-            
-            # Baseline league average ISO (roughly)
-            base_iso = 0.150
-            
-            # Exit velocity is highly correlated with ISO
-            # For every 1 mph above 88, ISO increases by ~0.007
-            exit_velo_adj = (exit_velo - 88) * 0.007 if exit_velo > 88 else (exit_velo - 88) * 0.005
-            
-            # Launch angle optimization - ideal for power is 15-35 degrees
-            if 15 <= launch_angle <= 35:
-                # Optimal launch angle for power
-                angle_diff = min(abs(launch_angle - 25), 10)  # Distance from optimal 25 degrees
-                launch_angle_adj = 0.040 * (1.0 - angle_diff / 10)
-            elif 0 <= launch_angle < 15:
-                # Too low (ground balls, low line drives)
-                launch_angle_adj = -0.050 + (launch_angle * 0.005)
-            elif 35 < launch_angle <= 50:
-                # High fly balls (still can be home runs but less efficient)
-                launch_angle_adj = 0.020 - ((launch_angle - 35) * 0.002)
+            # UNBIASED baseline based on player type
+            if player_type == "contact_elite":
+                base_iso = 0.120  # Realistic for elite contact hitters
+            elif player_type == "contact_good":
+                base_iso = 0.130
+            elif player_type == "power_pure":
+                base_iso = 0.200  # Higher baseline for power hitters
+            elif player_type == "power_balanced":
+                base_iso = 0.180
             else:
-                # Extreme angles (pop-ups or choppers)
-                launch_angle_adj = -0.060
-                
-            # Barrel and hard hit adjustments - very strong influence on ISO
-            barrel_adj = barrel_pct * 0.750  # Barrels are extremely indicative of power
-            hard_hit_adj = hard_hit_pct * 0.250  # Hard hit balls boost ISO
+                base_iso = 0.150  # League average
             
-            # Pull tendency adjustment - pull hitters generate more power
-            pull_adj = (pull_pct - 0.40) * 0.150 if pull_pct > 0.40 else 0
+            # REDUCED exit velocity impact (was 0.007, now 0.004)
+            exit_velo_adj = (exit_velo - 88) * 0.004 if exit_velo > 88 else (exit_velo - 88) * 0.003
             
-            # HR/FB adjustment - indicates ability to convert fly balls to HRs
-            hr_fb_adj = hr_fb_ratio * 0.300
+            # CONTACT-FRIENDLY launch angle adjustment
+            if 15 <= launch_angle <= 35:
+                # Optimal for power
+                angle_diff = min(abs(launch_angle - 25), 10)
+                launch_angle_adj = 0.030 * (1.0 - angle_diff / 10)  # Reduced from 0.040
+            elif 8 <= launch_angle < 15:
+                # CONTACT HITTER ZONE - less penalty!
+                launch_angle_adj = -0.015 + (launch_angle * 0.003)  # Much less penalty
+            elif 0 <= launch_angle < 8:
+                # Ground balls - still penalized but less
+                launch_angle_adj = -0.030  # Reduced from -0.050
+            elif 35 < launch_angle <= 50:
+                # High fly balls
+                launch_angle_adj = 0.015 - ((launch_angle - 35) * 0.001)
+            else:
+                # Extreme angles
+                launch_angle_adj = -0.040  # Reduced from -0.060
+            
+            # REDUCED barrel impact (was 0.750, now 0.400)
+            barrel_adj = barrel_pct * 0.400  # Major reduction!
+            
+            # REDUCED hard hit impact (was 0.250, now 0.150)
+            hard_hit_adj = hard_hit_pct * 0.150
+            
+            # Pull tendency - less impact
+            pull_adj = (pull_pct - 0.40) * 0.100 if pull_pct > 0.40 else 0  # Reduced from 0.150
+            
+            # REDUCED HR/FB impact (was 0.300, now 0.200)
+            hr_fb_adj = hr_fb_ratio * 0.200
+            
+            # NEW - Contact quality bonus for contact hitters
+            contact_bonus = 0
+            if player_type.startswith("contact"):
+                # Contact hitters get bonus for high average
+                if avg >= 0.300:
+                    contact_bonus = 0.020  # Bonus for elite contact
+                elif avg >= 0.280:
+                    contact_bonus = 0.010  # Bonus for good contact
             
             # Compute final xISO
-            xiso = base_iso + exit_velo_adj + launch_angle_adj + barrel_adj + hard_hit_adj + pull_adj + hr_fb_adj
+            xiso = (base_iso + exit_velo_adj + launch_angle_adj + 
+                    barrel_adj + hard_hit_adj + pull_adj + hr_fb_adj + contact_bonus)
             
-            # Cap within reasonable limits
-            return max(0.050, min(0.400, xiso))
+            # More reasonable limits
+            return max(0.080, min(0.400, xiso))  # Lowered minimum from 0.050 to 0.080
             
         except Exception as e:
             logger.error(f"Error calculating xISO for {batter}: {e}")
-            return 0.150  # Return league average as fallback
+            return 0.140  # Slightly lower fallback
             
     def calculate_workload_factor(self, pitcher):
         """Calculate pitcher workload factor (fatigue effect on HR probability)"""
@@ -1119,6 +1133,76 @@ class MLBHomeRunPredictor:
             return 'breaking'
         else:
             return 'offspeed'
+
+
+    def calculate_contact_quality_factor(self, batter):
+        """NEW: Contact quality factor that helps contact hitters"""
+        try:
+            avg = self.player_stats.get(batter, {}).get('avg', 0.250)
+            bb_per_pa = self.player_stats.get(batter, {}).get('bb_per_pa', 0.08)
+            k_per_pa = self.player_stats.get(batter, {}).get('k_per_pa', 0.22)
+            player_type = self.player_stats.get(batter, {}).get('player_type', 'average')
+            
+            contact_score = 1.0  # Start neutral
+            
+            # Batting average bonus
+            if avg >= 0.320:
+                contact_score += 0.4  # Elite contact (+40%)
+            elif avg >= 0.280:
+                contact_score += 0.3  # Good contact (+30%)
+            elif avg >= 0.250:
+                contact_score += 0.1  # Average contact (+10%)
+            
+            # Plate discipline bonus
+            discipline_ratio = bb_per_pa / (k_per_pa + 0.01)
+            if discipline_ratio > 0.5:
+                contact_score += 0.2
+            elif discipline_ratio > 0.3:
+                contact_score += 0.1
+            
+            # Player type bonus
+            if player_type == 'contact_elite':
+                contact_score += 0.3
+            elif player_type == 'contact_good':
+                contact_score += 0.2
+            
+            return min(1.8, contact_score)
+            
+        except Exception as e:
+            logger.error(f"Error calculating contact quality for {batter}: {e}")
+            return 1.0
+
+    def calculate_context_bonuses(self, batter, game_id, ballpark_factor):
+        """NEW: Context bonuses that help contact hitters"""
+        try:
+            player_type = self.player_stats.get(batter, {}).get('player_type', 'average')
+            
+            context_bonus = 1.0
+            
+            # Contact hitter advantages
+            if player_type.startswith('contact'):
+                # Small ballpark bonus
+                if ballpark_factor > 1.08:
+                    context_bonus += 0.25  # Big bonus in very small parks
+                elif ballpark_factor > 1.03:
+                    context_bonus += 0.15  # Medium bonus
+                
+                # Weather bonus
+                temp = self.weather_data.get(game_id, {}).get('temp', 70)
+                if temp > 75:
+                    context_bonus += 0.1
+            
+            # Power hitter advantages (reduced)
+            elif player_type.startswith('power'):
+                wind_speed = self.weather_data.get(game_id, {}).get('wind_speed', 0)
+                if wind_speed > 8:
+                    context_bonus += 0.15  # Reduced impact
+            
+            return min(1.5, context_bonus)
+            
+        except Exception as e:
+            logger.error(f"Error calculating context bonuses for {batter}: {e}")
+            return 1.0
 
     def is_ballpark_pull_friendly(self, team_code, batter_hand):
         """Determine if ballpark is pull-friendly for this batter's handedness"""
@@ -1520,54 +1604,39 @@ class MLBHomeRunPredictor:
 
                 # SLG factor (threshold-based)
                 slg = self.player_stats.get(batter, {}).get('slg', 0)
-                if slg > 0.550:  # Ideal threshold
-                    slg_factor = 1.4
-                elif slg > 0.500:  # Minimum threshold
-                    slg_factor = 1.2
-                else:
-                    slg_factor = 1.0
+                slg_factor = 0.8 + (slg * 1.2)  # Smooth scaling from 0.8 to 2.0
+                slg_factor = max(0.8, min(2.0, slg_factor))
 
                 # ISO factor (threshold-based)
                 iso = self.player_stats.get(batter, {}).get('iso', 0)
-                if iso > 0.300:  # Ideal threshold
-                    iso_factor = 1.4
-                elif iso > 0.250:  # Minimum threshold
-                    iso_factor = 1.2
-                else:
-                    iso_factor = 1.0
+                iso_factor = 0.9 + (iso * 1.8)  # Smooth scaling
+                iso_factor = max(0.9, min(1.8, iso_factor))
 
                 # L15 Barrel factor
-                l15_barrel = self.recent_player_stats.get(batter, {}).get('barrel_pct', 0)
-                if l15_barrel > 0.25:  # 25%+ threshold
-                    l15_barrel_factor = 1.5
-                else:
-                    l15_barrel_factor = 1.0
+                l15_barrel = self.recent_player_stats.get(batter, {}).get('barrel_pct', barrel_pct)
+                l15_barrel_factor = 0.9 + (l15_barrel * 2.5)  # Smooth scaling
+                l15_barrel_factor = max(0.9, min(1.5, l15_barrel_factor))
 
                 # L15 Exit Velocity factor
-                l15_ev = self.recent_player_stats.get(batter, {}).get('exit_velo', 0)
-                if l15_ev > 95:  # 95+ MPH threshold
-                    l15_ev_factor = 1.4
-                else:
-                    l15_ev_factor = 1.0
+                l15_ev = self.recent_player_stats.get(batter, {}).get('exit_velo', exit_velo)
+                l15_ev_factor = 0.8 + ((l15_ev - 85) * 0.04)  # Smooth scaling
+                l15_ev_factor = max(0.8, min(1.4, l15_ev_factor))
 
                 # Season barrel rate factor
-                if barrel_pct > 0.20:  # 20%+ threshold
-                    barrel_rate_factor = 1.5
-                else:
-                    barrel_rate_factor = 1.0
+                barrel_rate_factor = 0.8 + (barrel_pct * 3.0)  # Smooth scaling
+                barrel_rate_factor = max(0.8, min(1.6, barrel_rate_factor))
 
                 # Season exit velocity factor
-                if exit_velo > 95:  # 95+ MPH threshold
-                    exit_velo_factor = 1.4
-                else:
-                    exit_velo_factor = 1.0
+                exit_velo_factor = 0.7 + ((exit_velo - 85) * 0.05)  # Smooth scaling
+                exit_velo_factor = max(0.7, min(1.5, exit_velo_factor))
 
                 # HR% factor - use hr_per_pa as it's the same metric
-                hr_pct = season_hr_rate  # Use existing hr_per_pa as hr_pct
-                if hr_pct > 0.10:  # 10%+ threshold
-                    hr_pct_factor = 1.5
-                else:
-                    hr_pct_factor = 1.0
+                hr_pct = season_hr_rate
+                hr_pct_factor = 0.9 + (hr_pct * 6.0)  # Smooth scaling
+                hr_pct_factor = max(0.9, min(1.5, hr_pct_factor))
+
+                contact_quality_factor = self.calculate_contact_quality_factor(batter)
+                context_bonuses = self.calculate_context_bonuses(batter, game_id, ballpark_factor)
                 
                 # Expected ISO
                 xiso = self.recent_player_stats.get(batter, {}).get('xISO', 0.150)
@@ -1683,51 +1752,54 @@ class MLBHomeRunPredictor:
                 
                 # NEW: Form trend factor
                 form_trend_factor = self.calculate_form_trend_factor(batter)
+
                 
                 # Calculate weighted HR probability
                 hr_prob = (
                     WEIGHTS['recent_hr_rate'] * recent_hr_rate +
                     WEIGHTS['season_hr_rate'] * season_hr_rate +
-                    WEIGHTS['ballpark_factor'] * (ballpark_factor - 1) +  # Convert to modifier
+                    WEIGHTS['contact_quality'] * (contact_quality_factor - 1) +  # NEW!
+                    WEIGHTS['context_bonuses'] * (context_bonuses - 1) +  # NEW!
+                    WEIGHTS['ballpark_factor'] * (ballpark_factor - 1) +
                     WEIGHTS['pitcher_hr_allowed'] * pitcher_hr_rate +
-                    WEIGHTS['weather_factor'] * (weather_factor - 1) +  # Convert to modifier
+                    WEIGHTS['weather_factor'] * (weather_factor - 1) +
                     WEIGHTS['barrel_pct'] * barrel_pct +
-                    WEIGHTS['platoon_advantage'] * (platoon_factor - 1) +  # Convert to modifier
-                    WEIGHTS['exit_velocity'] * exit_velo_normalized +  # Use normalized version
+                    WEIGHTS['platoon_advantage'] * (platoon_factor - 1) +
+                    WEIGHTS['exit_velo_factor'] * (exit_velo_factor - 1) +  # Now uses smooth scaling
+                    WEIGHTS['slg_factor'] * (slg_factor - 1) +  # Now uses smooth scaling
+                    WEIGHTS['iso_factor'] * (iso_factor - 1) +  # Now uses smooth scaling
+                    WEIGHTS['l15_barrel_factor'] * (l15_barrel_factor - 1) +  # Now uses smooth scaling
+                    WEIGHTS['l15_ev_factor'] * (l15_ev_factor - 1) +  # Now uses smooth scaling
+                    WEIGHTS['barrel_rate_factor'] * (barrel_rate_factor - 1) +  # Now uses smooth scaling
+                    WEIGHTS['hr_pct_factor'] * (hr_pct_factor - 1) +  # Now uses smooth scaling
+                    # ... keep all your existing factors with their original calculations
                     WEIGHTS['fly_ball_rate'] * fly_ball_rate +
                     WEIGHTS['pull_pct'] * pull_pct +
                     WEIGHTS['hard_hit_pct'] * hard_hit_pct +
-                    WEIGHTS['launch_angle'] * (launch_angle_factor - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_gb_fb_ratio'] * (pitcher_gb_fb_factor - 1) +  # Convert to modifier
+                    WEIGHTS['launch_angle'] * (launch_angle_factor - 1) +
+                    WEIGHTS['pitcher_gb_fb_ratio'] * (pitcher_gb_fb_factor - 1) +
                     WEIGHTS['hr_fb_ratio'] * hr_fb_ratio +
-                    WEIGHTS['vs_pitch_type'] * (pitch_type_matchup - 1) +  # Convert to modifier
-                    WEIGHTS['pitcher_workload'] * (pitcher_workload - 1) +  # Convert to modifier
-                    WEIGHTS['batter_vs_pitcher'] * (batter_vs_pitcher - 1) +  # Convert to modifier
-                    WEIGHTS['home_away_split'] * (home_away_factor - 1) +  # Convert to modifier
-                    WEIGHTS['hot_cold_streak'] * (streak_factor - 1) +  # Convert to modifier
-                    WEIGHTS['xISO'] * (xiso_factor - 1) +  # Convert to modifier
-                    WEIGHTS['xwOBA'] * (xwoba_factor - 1) +  # Convert to modifier
-                    WEIGHTS['slg_factor'] * (slg_factor - 1) +
-                    WEIGHTS['iso_factor'] * (iso_factor - 1) +
-                    WEIGHTS['l15_barrel_factor'] * (l15_barrel_factor - 1) +
-                    WEIGHTS['l15_ev_factor'] * (l15_ev_factor - 1) +
-                    WEIGHTS['barrel_rate_factor'] * (barrel_rate_factor - 1) +  # Added barrel rate factor
-                    WEIGHTS['exit_velo_factor'] * (exit_velo_factor - 1) +  # Added exit velo factor
-                    WEIGHTS['hr_pct_factor'] * (hr_pct_factor - 1) +
+                    WEIGHTS['vs_pitch_type'] * (pitch_type_matchup - 1) +
+                    WEIGHTS['pitcher_workload'] * (pitcher_workload - 1) +
+                    WEIGHTS['batter_vs_pitcher'] * (batter_vs_pitcher - 1) +
+                    WEIGHTS['home_away_split'] * (home_away_factor - 1) +
+                    WEIGHTS['hot_cold_streak'] * (streak_factor - 1) +
+                    WEIGHTS['xISO'] * (xiso_factor - 1) +
+                    WEIGHTS['xwOBA'] * (xwoba_factor - 1) +
                     WEIGHTS['hard_hit_distance'] * (hard_hit_distance_factor - 1) +
                     WEIGHTS['pitch_specific'] * (pitch_specific_factor - 1) +
                     WEIGHTS['spray_angle'] * (spray_angle_factor - 1) +
                     WEIGHTS['zone_contact'] * (zone_contact_factor - 1) +
                     WEIGHTS['park_specific'] * (park_specific_factor - 1) +
-                    WEIGHTS['form_trend'] * (form_trend_factor - 1)  # NEW: Add form trend
+                    WEIGHTS['form_trend'] * (form_trend_factor - 1)
                 )
-            
+                            
                 # Apply base rate (league average HR rate is ~3%)
                 base_hr_rate = 0.03
                 final_hr_prob = base_hr_rate * (1 + hr_prob)
                 
                 # Cap probability within reasonable limits
-                final_hr_prob = max(0.01, min(0.25, final_hr_prob))
+                final_hr_prob = max(0.008, min(0.15, final_hr_prob))
                 
                 # Add prediction
                 hr_predictions.append({
